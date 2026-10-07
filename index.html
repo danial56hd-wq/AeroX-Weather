@@ -1,0 +1,4096 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>AERO-X Weather</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@300;400;700;900&family=Cairo:wght@300;400;600;700&family=DM+Mono:wght@300;400&family=Dancing+Script:wght@700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+<style>
+/* ═══════════════════════════════════════════
+   VARIABLES
+═══════════════════════════════════════════ */
+:root{
+  --bg:  #050810;
+  --bg2: #080d1a;
+  --bg3: #0c1222;
+
+  --c:   #00e5ff;
+  --cA:  rgba(0,229,255,.15);
+  --cB:  rgba(0,229,255,.08);
+  --cC:  rgba(0,229,255,.22);
+
+  --g:   #39ff14;
+  --gA:  rgba(57,255,20,.12);
+
+  --v:   #a855f7;
+  --a:   #ffb700;
+  --r:   #ff3e5f;
+
+  --t1:  rgba(232,240,255,.92);
+  --t2:  rgba(232,240,255,.50);
+  --t3:  rgba(232,240,255,.22);
+  --t4:  rgba(232,240,255,.08);
+
+  /* Glass panels — NO backdrop-filter needed */
+  --panel:  rgba(8,13,26,.82);
+  --panel2: rgba(10,16,30,.75);
+  --panelH: rgba(8,13,26,.90);
+
+  --line:  rgba(0,229,255,.10);
+  --line2: rgba(232,240,255,.08);
+  --line3: rgba(232,240,255,.13);
+
+  --rad: 16px;
+  --rad2: 22px;
+}
+
+/* ═══════════════════════════════════════════
+   RESET + BASE
+═══════════════════════════════════════════ */
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--t1);
+  font-family:'Cairo',sans-serif;
+  min-height:100vh;
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+  position:relative;
+}
+
+/* ═══════════════════════════════════════════
+   BACKGROUND LAYERS
+═══════════════════════════════════════════ */
+/* Layer 1 — depth gradient (CSS only, no canvas) */
+body::before{
+  content:'';
+  position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(ellipse 100% 70% at 15% 5%,  rgba(0,60,150,.20) 0%,transparent 55%),
+    radial-gradient(ellipse 80%  60% at 88% 92%,  rgba(57,255,20,.07) 0%,transparent 55%),
+    radial-gradient(ellipse 60%  50% at 50% 50%,  rgba(0,229,255,.04) 0%,transparent 65%),
+    linear-gradient(170deg,#04060f 0%,#060912 50%,#050810 100%);
+}
+
+/* Layer 2 — radar grid */
+body::after{
+  content:'';
+  position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:
+    linear-gradient(rgba(0,229,255,.030) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,229,255,.030) 1px,transparent 1px);
+  background-size:50px 50px;
+}
+
+/* Orbs */
+.orb{
+  position:fixed;border-radius:50%;pointer-events:none;z-index:0;
+  animation:orbf ease-in-out infinite;
+}
+.o1{width:550px;height:550px;top:-220px;left:-180px;
+    background:radial-gradient(circle,rgba(0,80,200,.13) 0%,transparent 70%);
+    animation-duration:14s}
+.o2{width:400px;height:400px;bottom:-80px;right:-130px;
+    background:radial-gradient(circle,rgba(57,255,20,.07) 0%,transparent 70%);
+    animation-duration:18s}
+.o3{width:300px;height:300px;top:38%;left:35%;
+    background:radial-gradient(circle,rgba(0,229,255,.05) 0%,transparent 70%);
+    animation-duration:22s}
+@keyframes orbf{
+  0%,100%{transform:scale(1) translate(0,0)}
+  35%{transform:scale(1.12) translate(18px,-14px)}
+  70%{transform:scale(.9) translate(-12px,16px)}
+}
+
+/* Rain canvas — drawn with JS */
+#RAIN{position:fixed;inset:0;z-index:1;pointer-events:none}
+
+/* CRT scanlines */
+#SCAN{
+  position:fixed;inset:0;z-index:2;pointer-events:none;
+  background:repeating-linear-gradient(
+    0deg,transparent,transparent 3px,
+    rgba(0,0,0,.025) 3px,rgba(0,0,0,.025) 4px
+  );
+}
+
+/* ═══════════════════════════════════════════
+   MAIN LAYOUT
+═══════════════════════════════════════════ */
+.app{
+  position:relative;z-index:3;
+  max-width:860px;margin:0 auto;
+  padding:12px 12px 90px;
+}
+
+/* ═══════════════════════════════════════════
+   GLASS CARD MIXIN — works on file:// + mobile
+═══════════════════════════════════════════ */
+.gc{
+  background:var(--panel);
+  border:1px solid var(--line2);
+  border-radius:var(--rad2);
+  position:relative;overflow:hidden;
+}
+/* top cyan accent line */
+.gc::before{
+  content:'';position:absolute;
+  top:0;left:8%;right:8%;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(0,229,255,.18),transparent);
+  pointer-events:none;
+}
+
+/* ═══════════════════════════════════════════
+   TOPBAR
+═══════════════════════════════════════════ */
+.topbar{
+  display:flex;align-items:center;gap:8px;
+  margin-bottom:11px;flex-wrap:wrap;
+  position:relative;
+}
+.logo{
+  font-family:'Orbitron',sans-serif;font-size:20px;font-weight:900;
+  letter-spacing:5px;color:var(--t1);flex-shrink:0;user-select:none;
+  text-shadow:0 0 28px rgba(0,229,255,.28);
+}
+.logo em{color:var(--c);font-style:normal;
+  text-shadow:0 0 12px var(--c),0 0 28px rgba(0,229,255,.35)}
+/* التوقيع: اسم NIDAL WATFA بخط Cairo ثابت بدون نبض أو هالات */
+.sig{
+  font-family:'Cairo',sans-serif;
+  font-weight:700;font-size:13.5px;
+  color: var(--c); /* لون ثابت */
+  letter-spacing: 0.5px;
+  flex-shrink:0;
+}
+.livepill{
+  display:flex;align-items:center;gap:5px;
+  background:rgba(57,255,20,.07);
+  border:1px solid rgba(57,255,20,.22);
+  border-radius:100px;padding:3px 9px;
+  font-family:'DM Mono',monospace;font-size:9px;
+  color:var(--g);letter-spacing:1.2px;flex-shrink:0;
+}
+.ldot{
+  width:6px;height:6px;border-radius:50%;
+  background:var(--g);box-shadow:0 0 5px var(--g);
+  animation:blink 2s ease-in-out infinite;
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.sp{flex:1}
+.langsel{
+  appearance:none;-webkit-appearance:none;
+  background:var(--panel);border:1px solid var(--line3);
+  border-radius:10px;padding:7px 28px 7px 10px;
+  color:var(--t2);font-family:'DM Mono',monospace;font-size:11px;
+  cursor:pointer;outline:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='rgba(0,229,255,.5)'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 9px center;
+  transition:border-color .2s,color .2s;
+}
+[dir=ltr] .langsel{padding:7px 10px 7px 28px;background-position:left 9px center}
+.langsel:hover{border-color:var(--c);color:var(--t1)}
+
+/* ═══════════════════════════════════════════
+   ICON BUTTONS — real <button> for mobile
+═══════════════════════════════════════════ */
+.btns{display:flex;gap:6px}
+.ib{
+  /* REAL BUTTON TAG — handles touch/click on all mobile browsers */
+  width:38px;height:38px;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--panel);
+  border:1px solid var(--line3);
+  border-radius:10px;
+  color:var(--t2);font-size:14px;
+  cursor:pointer;
+  /* smooth transitions */
+  transition:background .18s,border-color .18s,color .18s,box-shadow .18s;
+  -webkit-tap-highlight-color:transparent;
+  position:relative;flex-shrink:0;
+  /* NO clip-path — was breaking clicks */
+}
+.ib:hover,.ib:focus,.ib:active{
+  background:var(--cA);
+  border-color:var(--c);
+  color:var(--c);
+  box-shadow:0 0 16px rgba(0,229,255,.22),inset 0 0 8px rgba(0,229,255,.07);
+  outline:none;
+}
+/* key dot indicator */
+.ib .kd{
+  position:absolute;top:5px;right:5px;
+  width:7px;height:7px;border-radius:50%;
+  background:var(--a);box-shadow:0 0 5px var(--a);
+  pointer-events:none;
+}
+.ib .kd.on{background:var(--g);box-shadow:0 0 5px var(--g)}
+
+/* ═══════════════════════════════════════════
+   SEARCH ROW
+═══════════════════════════════════════════ */
+.srow{display:flex;gap:9px;margin-bottom:10px;position:relative}
+.swrap{flex:1;position:relative}
+.sinp{
+  width:100%;background:var(--panel2);
+  border:1px solid var(--line3);border-radius:var(--rad);
+  padding:12px 46px 12px 14px;
+  color:var(--t1);font-family:'Cairo',sans-serif;font-size:14px;
+  outline:none;
+  transition:border-color .25s,box-shadow .25s;
+}
+[dir=ltr] .sinp{padding:12px 14px 12px 46px}
+.sinp::placeholder{color:var(--t3)}
+.sinp:focus{
+  border-color:var(--c);
+  box-shadow:0 0 0 2px rgba(0,229,255,.1),0 0 20px rgba(0,229,255,.07);
+}
+.sbtn{
+  position:absolute;top:50%;transform:translateY(-50%);
+  background:none;border:none;color:var(--t3);
+  cursor:pointer;font-size:14px;padding:10px;
+  transition:color .18s;-webkit-tap-highlight-color:transparent;
+}
+[dir=rtl] .sbtn{left:7px}[dir=ltr] .sbtn{right:7px}
+.sbtn:hover{color:var(--c)}
+
+/* Global view button */
+.gbtn{
+  background:rgba(57,255,20,.09);
+  border:1px solid rgba(57,255,20,.38);
+  border-radius:var(--rad);padding:12px 17px;
+  color:var(--g);font-family:'Cairo',sans-serif;
+  font-size:13px;font-weight:700;
+  cursor:pointer;white-space:nowrap;flex-shrink:0;
+  display:flex;align-items:center;gap:6px;
+  transition:all .2s;-webkit-tap-highlight-color:transparent;
+  text-shadow:0 0 8px rgba(57,255,20,.4);
+  box-shadow:0 0 14px rgba(57,255,20,.1);
+}
+.gbtn:hover,.gbtn:active{
+  background:rgba(57,255,20,.17);
+  box-shadow:0 0 24px rgba(57,255,20,.25);
+  transform:translateY(-1px);
+}
+
+/* autocomplete */
+.acdrop{
+  position:absolute;top:calc(100% + 5px);left:0;right:0;
+  background:#0c1424;border:1px solid var(--cC);
+  border-radius:var(--rad);z-index:60;
+  display:none;overflow:hidden;
+  box-shadow:0 12px 40px rgba(0,0,0,.65);
+}
+.acdrop.open{display:block}
+.acit{
+  padding:11px 14px;font-size:13px;color:var(--t2);
+  cursor:pointer;display:flex;align-items:center;gap:9px;
+  border-bottom:1px solid var(--line2);transition:background .12s;
+}
+.acit:last-child{border:none}
+.acit:hover,.acit:active{background:var(--cA);color:var(--c)}
+.acit i{color:var(--c);font-size:11px;flex-shrink:0}
+
+/* ═══════════════════════════════════════════
+   STATUS BADGES
+═══════════════════════════════════════════ */
+.bdg{
+  border-radius:12px;padding:8px 13px;font-size:12px;
+  margin-bottom:10px;display:flex;align-items:center;gap:8px;
+}
+.bdgW{background:rgba(255,183,0,.08);border:1px solid rgba(255,183,0,.22);color:var(--a)}
+.bdgG{background:rgba(57,255,20,.07);border:1px solid rgba(57,255,20,.22);color:var(--g);display:none}
+
+/* ═══════════════════════════════════════════
+   FAVORITES
+═══════════════════════════════════════════ */
+.favrow{
+  display:flex;gap:7px;overflow-x:auto;padding-bottom:2px;
+  margin-bottom:10px;scrollbar-width:none;
+}
+.favrow::-webkit-scrollbar{display:none}
+.fchip{
+  flex:0 0 auto;background:var(--panel2);
+  border:1px solid var(--line3);border-radius:100px;
+  padding:6px 12px;font-size:12px;color:var(--t2);
+  cursor:pointer;display:flex;align-items:center;gap:6px;
+  white-space:nowrap;transition:all .18s;
+  -webkit-tap-highlight-color:transparent;
+}
+.fchip:hover{border-color:var(--a);color:var(--a)}
+.fchip i{color:var(--a);font-size:10px}
+.frm{color:var(--t3);font-size:10px;transition:color .15s}
+.fchip:hover .frm{color:var(--r)}
+
+/* ═══════════════════════════════════════════
+   HERO CARD
+═══════════════════════════════════════════ */
+.hero{
+  background:linear-gradient(140deg,rgba(0,229,255,.06) 0%,var(--panel) 45%,rgba(57,255,20,.03) 100%);
+  border:1px solid var(--cC);
+  border-radius:var(--rad2);
+  padding:22px;margin-bottom:10px;
+  position:relative;overflow:hidden;
+  box-shadow:0 0 50px rgba(0,229,255,.06),0 12px 40px rgba(0,0,0,.45);
+}
+/* glowing top edge */
+.hero::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent 0%,var(--c) 50%,transparent 100%);
+  opacity:.45;pointer-events:none;
+}
+/* corner glow */
+.hero::after{
+  content:'';position:absolute;bottom:-30px;right:-30px;
+  width:160px;height:160px;border-radius:50%;
+  background:radial-gradient(circle,rgba(0,229,255,.07) 0%,transparent 70%);
+  pointer-events:none;
+}
+.herotop{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px;gap:8px;flex-wrap:wrap}
+.cpill{
+  display:inline-flex;align-items:center;gap:6px;
+  background:rgba(0,229,255,.08);border:1px solid rgba(0,229,255,.25);
+  border-radius:6px;padding:5px 12px;
+  font-family:'Orbitron',sans-serif;font-size:10px;
+  letter-spacing:2.5px;color:var(--c);
+  text-shadow:0 0 8px rgba(0,229,255,.35);
+}
+.cpill i{font-size:9px}
+.favbtn{
+  background:none;border:none;color:var(--t3);
+  cursor:pointer;font-size:17px;padding:4px;
+  transition:color .2s,text-shadow .2s;
+  -webkit-tap-highlight-color:transparent;
+}
+.favbtn:hover,.favbtn.on{color:var(--a);text-shadow:0 0 8px rgba(255,183,0,.5)}
+
+/* temp — ultra thin weight */
+.temp{
+  font-family:'Orbitron',sans-serif;
+  font-size:clamp(62px,17vw,108px);
+  font-weight:300;
+  color:var(--t1);line-height:1;
+  text-shadow:0 0 35px rgba(0,229,255,.18),0 0 70px rgba(0,229,255,.07);
+  letter-spacing:-3px;
+}
+.temp sup{font-size:.32em;opacity:.38;vertical-align:super;font-weight:300}
+.trange{display:flex;align-items:center;gap:13px;margin:6px 0 5px}
+.tlo{color:var(--c);font-size:15px;font-weight:600;display:flex;align-items:center;gap:4px}
+.thi{color:#ff7aaa;font-size:15px;font-weight:600;display:flex;align-items:center;gap:4px}
+.feels{font-size:12px;color:var(--t2);display:flex;align-items:center;gap:6px;letter-spacing:.5px}
+.condside{text-align:center;flex-shrink:0}
+.cico{font-size:48px;line-height:1;margin-bottom:8px;filter:drop-shadow(0 0 14px rgba(255,255,255,.12))}
+.ctag{
+  font-family:'DM Mono',monospace;font-size:10px;color:var(--t2);letter-spacing:2px;
+  background:rgba(255,255,255,.05);border:1px solid var(--line3);
+  border-radius:5px;padding:4px 11px;white-space:nowrap;
+}
+
+/* ═══════════════════════════════════════════
+   STATS
+═══════════════════════════════════════════ */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}
+.stat{
+  background:var(--panel2);border:1px solid var(--line2);
+  border-radius:var(--rad);padding:14px 10px;text-align:center;
+  transition:border-color .2s,background .2s;
+  position:relative;overflow:hidden;
+}
+.stat::before{
+  content:'';position:absolute;top:0;left:22%;right:22%;height:1px;
+  background:linear-gradient(90deg,transparent,var(--line3),transparent);
+}
+.stat:hover{border-color:rgba(0,229,255,.22);background:rgba(0,229,255,.05)}
+.sico{font-size:16px;margin-bottom:6px}
+.sv{font-family:'Orbitron',sans-serif;font-size:17px;font-weight:700;color:var(--t1);line-height:1}
+.su{font-size:9px;opacity:.38}
+.sl{font-size:10px;color:var(--t3);margin-top:3px;letter-spacing:.7px}
+
+/* ═══════════════════════════════════════════
+   MAP
+═══════════════════════════════════════════ */
+.mapsec{
+  background:var(--panel);border:1px solid var(--cC);
+  border-radius:var(--rad2);overflow:hidden;margin-bottom:10px;
+  box-shadow:0 0 40px rgba(0,229,255,.07),0 12px 35px rgba(0,0,0,.4);
+}
+.maphdr{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 15px;border-bottom:1px solid var(--line);
+  background:rgba(0,229,255,.028);flex-wrap:wrap;gap:8px;
+}
+.maptit{
+  font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:3px;color:var(--c);
+  display:flex;align-items:center;gap:8px;
+  text-shadow:0 0 8px rgba(0,229,255,.35);
+}
+.maplys{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+/* map layer buttons — real <button> */
+.mlb{
+  background:var(--t4);border:1px solid var(--line2);
+  border-radius:7px;padding:5px 10px;
+  color:var(--t2);font-size:11px;font-family:'Cairo',sans-serif;
+  cursor:pointer;letter-spacing:.4px;
+  transition:all .18s;-webkit-tap-highlight-color:transparent;
+}
+.mlb.on{background:var(--cA);border-color:var(--c);color:var(--c);
+  box-shadow:0 0 9px rgba(0,229,255,.18);text-shadow:0 0 6px rgba(0,229,255,.35)}
+.mlb:hover{border-color:var(--line3);color:var(--t1)}
+.fsb{
+  background:var(--t4);border:1px solid var(--line2);
+  border-radius:7px;width:28px;height:28px;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--t3);cursor:pointer;font-size:11px;
+  transition:all .18s;-webkit-tap-highlight-color:transparent;
+}
+.fsb:hover{border-color:var(--c);color:var(--c)}
+.mapframe{width:100%;height:345px;border:none;display:block;background:#060d18}
+
+/* ═══════════════════════════════════════════
+   SECTION CARD
+═══════════════════════════════════════════ */
+.scard{
+  background:var(--panel2);border:1px solid var(--line2);
+  border-radius:var(--rad2);padding:16px;margin-bottom:10px;
+  position:relative;overflow:hidden;
+}
+.scard::before{
+  content:'';position:absolute;top:0;left:12%;right:12%;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(0,229,255,.1),transparent);
+}
+.shdr{
+  display:flex;align-items:center;gap:8px;margin-bottom:13px;
+  font-family:'Orbitron',sans-serif;font-size:10px;
+  letter-spacing:2.5px;color:var(--t2);text-transform:uppercase;
+}
+.shdr i{color:var(--g);text-shadow:0 0 7px rgba(57,255,20,.4)}
+
+/* ═══════════════════════════════════════════
+   HOURLY
+═══════════════════════════════════════════ */
+.hscroll{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+.hscroll::-webkit-scrollbar{display:none}
+.hc{
+  flex:0 0 auto;background:rgba(255,255,255,.028);
+  border:1px solid var(--line2);border-radius:13px;
+  padding:12px 13px;text-align:center;min-width:68px;
+  transition:border-color .18s;
+}
+.hc.now{background:var(--cA);border-color:var(--c);box-shadow:0 0 16px rgba(0,229,255,.14)}
+.ht{font-size:10px;color:var(--t3);margin-bottom:5px;font-family:'DM Mono',monospace}
+.hi{font-size:16px;margin-bottom:5px}
+.hv{font-family:'Orbitron',sans-serif;font-size:14px;font-weight:700;color:var(--t1)}
+.hc.now .hv{color:var(--c);text-shadow:0 0 7px rgba(0,229,255,.5)}
+
+/* ═══════════════════════════════════════════
+   QUICK GRID
+═══════════════════════════════════════════ */
+.qgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+/* real <button> elements */
+.qc{
+  background:var(--panel2);border:1px solid var(--line2);
+  border-radius:var(--rad2);padding:18px 14px;
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  cursor:pointer;
+  transition:border-color .2s,background .2s,transform .2s,box-shadow .2s;
+  -webkit-tap-highlight-color:transparent;
+  color:inherit;font-family:inherit;
+  position:relative;overflow:hidden;
+  width:100%;
+}
+.qc::before{
+  content:'';position:absolute;top:0;left:20%;right:20%;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(0,229,255,.1),transparent);
+}
+.qc:hover,.qc:active{
+  background:var(--cA);border-color:var(--c);
+  transform:translateY(-2px);
+  box-shadow:0 8px 28px rgba(0,0,0,.3),0 0 20px rgba(0,229,255,.07);
+}
+.qc i{font-size:24px;pointer-events:none}
+.qc span{font-size:12px;color:var(--t2);pointer-events:none;letter-spacing:.4px}
+.q1 i,.q2 i{color:var(--c);text-shadow:0 0 8px rgba(0,229,255,.4)}
+.q3 i{color:#ff8c42;text-shadow:0 0 8px rgba(255,140,66,.32)}
+.q4 i{color:var(--v);text-shadow:0 0 8px rgba(168,85,247,.32)}
+
+/* ═══════════════════════════════════════════
+   EXTRA — UV + SUN (مع إضافة مؤشرات جديدة)
+═══════════════════════════════════════════ */
+.exrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.exc{
+  background:var(--panel2);border:1px solid var(--line2);
+  border-radius:var(--rad2);padding:16px;
+  position:relative;overflow:hidden;
+}
+.exc::before{
+  content:'';position:absolute;top:0;left:18%;right:18%;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(0,229,255,.1),transparent);
+}
+.extit{font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;color:var(--t2);margin-bottom:12px;display:flex;align-items:center;gap:7px}
+.extit i{color:var(--g);text-shadow:0 0 6px rgba(57,255,20,.4)}
+.uvv{font-family:'Orbitron',sans-serif;font-size:36px;font-weight:300;color:var(--t1);line-height:1}
+.uvl{font-size:11px;color:var(--t2);margin-top:4px;letter-spacing:.7px}
+.uvbg{height:4px;background:rgba(255,255,255,.06);border-radius:100px;overflow:hidden;margin-top:10px}
+.uvf{height:100%;border-radius:100px;background:linear-gradient(90deg,#39ff14,#ffb700,#ff6b00,#ff3e5f);transition:width 1.2s ease}
+.sunrow{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.sunit{text-align:center}
+.suico{font-size:22px;margin-bottom:5px}
+.sutm{font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;color:var(--t1)}
+.sulb{font-size:10px;color:var(--t3);margin-top:2px;letter-spacing:.5px}
+.sunln{flex:1;height:1px;background:linear-gradient(90deg,rgba(255,183,0,.22),transparent,rgba(255,183,0,.22))}
+/* عناصر جديدة للغبار وغبار الطلع */
+.airborne-row {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 12px;
+  gap: 8px;
+}
+.airborne-item {
+  flex: 1;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  padding: 8px 4px;
+  text-align: center;
+}
+.airborne-item .value {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 16px;
+  color: var(--c);
+  line-height: 1.3;
+}
+.airborne-item .label {
+  font-size: 9px;
+  color: var(--t3);
+  letter-spacing: 0.5px;
+}
+
+/* ═══════════════════════════════════════════
+   AQI (مع توسعة للأحوال الجوية)
+═══════════════════════════════════════════ */
+.aqic{
+  background:var(--panel2);border:1px solid var(--line2);
+  border-radius:var(--rad2);padding:17px;margin-bottom:10px;
+  position:relative;overflow:hidden;
+}
+.aqic::before{
+  content:'';position:absolute;top:0;left:12%;right:12%;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(57,255,20,.1),transparent);
+}
+.aqihdr{font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2.5px;color:var(--t2);display:flex;align-items:center;gap:7px;margin-bottom:13px}
+.aqihdr i{color:var(--g);text-shadow:0 0 6px rgba(57,255,20,.35)}
+.aqiv{font-family:'Orbitron',sans-serif;font-size:42px;font-weight:300;color:var(--g);line-height:1;text-shadow:0 0 20px rgba(57,255,20,.28)}
+.aqil{font-size:12px;color:var(--t2);margin-top:3px;letter-spacing:.5px}
+.aqib{padding:4px 11px;border-radius:5px;font-size:11px;font-weight:700;margin-top:8px;display:inline-block;letter-spacing:.7px;font-family:'DM Mono',monospace}
+.ag{background:rgba(57,255,20,.1);border:1px solid rgba(57,255,20,.22);color:var(--g)}
+.am{background:rgba(255,183,0,.1);border:1px solid rgba(255,183,0,.22);color:var(--a)}
+.ap{background:rgba(255,62,95,.1);border:1px solid rgba(255,62,95,.22);color:var(--r)}
+.aqibg{height:4px;background:rgba(255,255,255,.06);border-radius:100px;overflow:hidden;margin:13px 0 5px}
+.aqif{height:100%;border-radius:100px;background:linear-gradient(90deg,#39ff14 0%,#ffb700 50%,#ff3e5f 100%);transition:width 1.2s cubic-bezier(.4,0,.2,1)}
+.aqisc{display:flex;justify-content:space-between;font-size:10px;color:var(--t3);font-family:'DM Mono',monospace;margin-bottom:13px}
+.aqidet{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.aii{background:rgba(255,255,255,.025);border:1px solid var(--line2);border-radius:12px;padding:10px;text-align:center}
+.aiv{font-family:'Orbitron',sans-serif;font-size:14px;color:var(--t1);margin-bottom:3px}
+.ail{font-size:10px;color:var(--t3)}
+
+/* ═══════════════════════════════════════════
+   WEEKLY
+═══════════════════════════════════════════ */
+.wgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(62px,1fr));gap:7px}
+.dc{
+  background:rgba(255,255,255,.026);border:1px solid var(--line2);
+  border-radius:13px;padding:11px 5px;text-align:center;
+  transition:border-color .18s,transform .18s;
+}
+.dc:hover{border-color:rgba(0,229,255,.22);transform:translateY(-2px);box-shadow:0 0 12px rgba(0,229,255,.07)}
+.dn{font-size:9px;color:var(--t3);margin-bottom:6px;font-family:'DM Mono',monospace;letter-spacing:.5px}
+.di{font-size:15px;margin-bottom:6px}
+.dh{font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;color:var(--c);margin-bottom:2px;text-shadow:0 0 5px rgba(0,229,255,.3)}
+.dl{font-size:10px;color:var(--t3)}
+
+/* ═══════════════════════════════════════════
+   CONSOLE
+═══════════════════════════════════════════ */
+.concard{
+  background:#050810;border:1px solid rgba(0,229,255,.22);
+  border-radius:var(--rad2);overflow:hidden;margin-bottom:10px;
+  box-shadow:0 0 30px rgba(0,229,255,.07);
+}
+.conhdr{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 14px;border-bottom:1px solid rgba(0,229,255,.1);
+  background:rgba(0,229,255,.025);
+}
+.cdots{display:flex;gap:5px}
+.cdot{width:9px;height:9px;border-radius:50%}
+.cd1{background:#ff5f57}.cd2{background:#febc2e}.cd3{background:#28c840}
+.contit{
+  font-family:'DM Mono',monospace;font-size:11px;
+  letter-spacing:2px;color:var(--c);
+  display:flex;align-items:center;gap:7px;
+  text-shadow:0 0 6px rgba(0,229,255,.35);
+}
+.conacts{display:flex;gap:5px}
+.cbtn{
+  background:rgba(0,229,255,.04);border:1px solid rgba(0,229,255,.12);
+  border-radius:6px;padding:3px 9px;
+  font-size:10px;color:var(--t2);cursor:pointer;
+  font-family:'DM Mono',monospace;transition:all .18s;letter-spacing:.8px;
+  -webkit-tap-highlight-color:transparent;
+}
+.cbtn:hover{border-color:var(--c);color:var(--c)}
+.conbody{
+  padding:10px 14px;max-height:185px;overflow-y:auto;
+  font-family:'DM Mono',monospace;font-size:11px;line-height:1.8;
+  scrollbar-width:thin;scrollbar-color:rgba(0,229,255,.15) transparent;
+}
+.conbody::-webkit-scrollbar{width:3px}
+.conbody::-webkit-scrollbar-thumb{background:rgba(0,229,255,.2);border-radius:3px}
+.clog{display:flex;gap:8px}
+.ct{color:var(--t3);flex-shrink:0;font-size:10px}
+.cm{}
+.clog.info .cm{color:var(--c)} .clog.ok .cm{color:var(--g)}
+.clog.warn .cm{color:var(--a)} .clog.err .cm{color:var(--r)}
+.clog.sys  .cm{color:var(--v)}
+.coninrow{display:flex;border-top:1px solid rgba(0,229,255,.08);background:rgba(0,0,0,.18)}
+.conprompt{padding:10px 12px;font-family:'DM Mono',monospace;font-size:11px;color:var(--c);flex-shrink:0}
+.coninp{flex:1;background:transparent;border:none;color:var(--t1);font-family:'DM Mono',monospace;font-size:11px;outline:none;padding:10px 0}
+.coninp::placeholder{color:var(--t3)}
+
+/* ═══════════════════════════════════════════
+   LOADING SCREEN
+═══════════════════════════════════════════ */
+.loading{
+  position:fixed;inset:0;z-index:500;
+  background:rgba(4,6,14,.97);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  transition:opacity .4s;
+}
+.loading.gone{opacity:0;pointer-events:none}
+.spin{
+  width:44px;height:44px;border-radius:50%;
+  border:1px solid rgba(0,229,255,.12);border-top-color:var(--c);
+  animation:spin .75s linear infinite;margin-bottom:14px;
+  box-shadow:0 0 20px rgba(0,229,255,.16);
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.ltxt{font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:3.5px;color:var(--t2)}
+
+/* ═══════════════════════════════════════════
+   MODALS
+═══════════════════════════════════════════ */
+.ovlay{
+  display:none;
+  position:fixed;inset:0;z-index:400;
+  background:rgba(0,0,0,.85);
+  align-items:center;justify-content:center;
+  padding:14px;
+}
+.ovlay.show{display:flex}
+.mbox{
+  background:linear-gradient(155deg,#0d1526,#080d18);
+  border:1px solid var(--line3);border-radius:var(--rad2);
+  padding:22px;width:100%;
+  animation:mup .22s ease;
+  position:relative;overflow:hidden;
+}
+.mbox::before{
+  content:'';position:absolute;top:0;left:14%;right:14%;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(0,229,255,.25),transparent);
+}
+.mlaybx{max-width:400px;border-color:rgba(0,229,255,.22)}
+.mapibx{max-width:440px;border-color:rgba(57,255,20,.18)}
+@keyframes mup{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.mtit{
+  font-family:'Orbitron',sans-serif;font-size:12px;letter-spacing:2px;
+  color:var(--t1);margin-bottom:15px;display:flex;align-items:center;gap:8px;
+}
+.mtit i{color:var(--c);text-shadow:0 0 8px rgba(0,229,255,.38)}
+.lgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:13px;max-height:360px;overflow-y:auto}
+
+/* Notes Modal */
+.notes-area{
+  width:100%;background:var(--bg3);border:1px solid var(--line3);
+  border-radius:12px;padding:12px 14px;color:var(--t1);
+  font-family:'Cairo',sans-serif;font-size:13px;
+  outline:none;margin-bottom:10px;min-height:120px;resize:vertical;
+  transition:border-color .25s,box-shadow .25s;line-height:1.7;
+}
+.notes-area:focus{border-color:var(--c);box-shadow:0 0 0 2px rgba(0,229,255,.08)}
+.notes-area::placeholder{color:var(--t3)}
+.notes-meta{font-size:10px;color:var(--t3);font-family:'DM Mono',monospace;letter-spacing:.8px;margin-bottom:8px}
+.notes-contact{
+  background:rgba(0,229,255,.04);border:1px solid rgba(0,229,255,.12);
+  border-radius:10px;padding:10px 13px;margin-bottom:10px;
+  font-size:11px;color:var(--t2);line-height:1.9;
+}
+.notes-contact i{color:var(--c);margin-left:5px;width:14px}
+[dir=ltr] .notes-contact i{margin-right:5px;margin-left:0}
+/* layer items — real <button> */
+.lit{
+  background:var(--t4);border:1px solid var(--line2);
+  border-radius:13px;padding:15px;cursor:pointer;text-align:center;
+  display:flex;flex-direction:column;align-items:center;gap:7px;
+  transition:border-color .18s,background .18s;
+  -webkit-tap-highlight-color:transparent;width:100%;color:inherit;
+}
+.lit:hover,.lit:active{border-color:var(--c);background:var(--cA)}
+.lit i{font-size:21px;color:var(--c);text-shadow:0 0 7px rgba(0,229,255,.35)}
+.lit span{font-size:12px;color:var(--t2);letter-spacing:.3px}
+.closebtn{
+  width:100%;background:var(--t4);border:1px solid var(--line2);
+  border-radius:12px;padding:11px;color:var(--t2);cursor:pointer;
+  font-family:'Cairo',sans-serif;font-size:13px;
+  transition:all .18s;-webkit-tap-highlight-color:transparent;
+}
+.closebtn:hover{background:rgba(255,255,255,.08);color:var(--t1);border-color:var(--c)}
+.ast{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:11px;font-size:12px;margin-bottom:12px;letter-spacing:.3px}
+.ast.ok{background:rgba(57,255,20,.08);border:1px solid rgba(57,255,20,.2);color:var(--g)}
+.ast.no{background:rgba(255,183,0,.08);border:1px solid rgba(255,183,0,.2);color:var(--a)}
+.albl{font-size:12px;color:var(--t2);margin-bottom:7px;display:block;letter-spacing:.3px}
+.ainp{
+  width:100%;background:var(--bg3);border:1px solid var(--line3);
+  border-radius:12px;padding:12px 14px;color:var(--t1);
+  font-family:'DM Mono',monospace;font-size:12px;
+  outline:none;margin-bottom:10px;
+  transition:border-color .25s,box-shadow .25s;letter-spacing:.5px;
+}
+.ainp:focus{border-color:var(--g);box-shadow:0 0 0 2px rgba(57,255,20,.08)}
+.ainp::placeholder{color:var(--t3)}
+.asave{
+  width:100%;background:rgba(57,255,20,.1);border:1px solid rgba(57,255,20,.4);
+  border-radius:12px;padding:12px;color:var(--g);
+  font-family:'Cairo',sans-serif;font-size:13px;font-weight:700;
+  cursor:pointer;transition:all .2s;margin-bottom:7px;
+  text-shadow:0 0 8px rgba(57,255,20,.3);
+  box-shadow:0 0 12px rgba(57,255,20,.1);-webkit-tap-highlight-color:transparent;
+}
+.asave:hover,.asave:active{background:rgba(57,255,20,.18);box-shadow:0 0 22px rgba(57,255,20,.22)}
+.adel{
+  width:100%;background:rgba(255,62,95,.07);border:1px solid rgba(255,62,95,.2);
+  border-radius:12px;padding:10px;color:var(--r);
+  font-family:'Cairo',sans-serif;font-size:12px;
+  cursor:pointer;transition:all .2s;margin-bottom:10px;
+  -webkit-tap-highlight-color:transparent;
+}
+.adel:hover{background:rgba(255,62,95,.14)}
+.ahint{font-size:11px;color:var(--t3);text-align:center;line-height:1.8;margin-bottom:12px}
+.ahint a{color:var(--c);text-decoration:none}
+
+/* ═══════════════════════════════════════════
+   SHARE DROPDOWN
+═══════════════════════════════════════════ */
+.share-dropdown {
+  position: fixed;
+  top: auto;
+  left: auto;
+  background: var(--panel);
+  border: 1px solid var(--cC);
+  border-radius: var(--rad);
+  padding: 8px;
+  z-index: 500;
+  min-width: 200px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.8), 0 0 20px rgba(0,229,255,.1);
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  animation: mup .18s ease;
+}
+.share-dropdown.show {
+  display: flex;
+}
+.share-item {
+  background: transparent;
+  border: none;
+  padding: 10px 12px;
+  color: var(--t2);
+  font-family: 'Cairo', sans-serif;
+  font-size: 13px;
+  text-align: right;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: background 0.15s, color 0.15s;
+  width: 100%;
+}
+.share-item i {
+  width: 18px;
+  color: var(--c);
+}
+.share-item:hover {
+  background: var(--cA);
+  color: var(--c);
+}
+[dir=ltr] .share-item {
+  text-align: left;
+}
+
+/* ═══════════════════════════════════════════
+   FOOTER
+═══════════════════════════════════════════ */
+.foot{
+  text-align:center;padding:22px 0 10px;
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  border-top:1px solid var(--line2);margin-top:4px;
+}
+.footsig{
+  font-family:'Cairo',sans-serif;font-size:16px;font-weight:700;
+  color: var(--c); /* لون ثابت */
+  letter-spacing: 0.5px;
+}
+.footcopy{font-size:10px;color:var(--t3);font-family:'DM Mono',monospace;letter-spacing:1.5px}
+
+/* ═══════════════════════════════════════════
+   RESPONSIVE
+═══════════════════════════════════════════ */
+@media(max-width:580px){
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .wgrid{grid-template-columns:repeat(auto-fill,minmax(58px,1fr))}
+  
+  .exrow{grid-template-columns:1fr}
+  .hero{padding:15px}
+  .lgrid{grid-template-columns:repeat(2,1fr)}
+}
+/* ═══════════════════════════════════════════
+   ALTITUDE SLIDER
+═══════════════════════════════════════════ */
+.alt-slider-wrap{
+  background:rgba(0,229,255,.04);
+  border:1px solid rgba(0,229,255,.15);
+  border-radius:12px;padding:12px 14px;margin-bottom:12px;
+}
+.alt-label{
+  font-size:12px;color:var(--t2);margin-bottom:10px;
+  display:flex;align-items:center;gap:7px;font-family:'Cairo',sans-serif;
+}
+#ALT_VAL{color:var(--c);font-family:'DM Mono',monospace;font-size:11px;
+  background:rgba(0,229,255,.08);border:1px solid rgba(0,229,255,.2);
+  border-radius:5px;padding:2px 8px;margin-right:4px}
+.alt-slider{
+  width:100%;-webkit-appearance:none;appearance:none;
+  height:4px;border-radius:100px;outline:none;cursor:pointer;
+  background:linear-gradient(90deg,var(--c) 0%,rgba(0,229,255,.15) 0%);
+  transition:background .2s;
+}
+.alt-slider::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;
+  width:22px;height:22px;border-radius:50%;
+  background:radial-gradient(circle,#fff 20%,var(--c) 70%);
+  box-shadow:0 0 10px rgba(0,229,255,.5);cursor:pointer;
+  border:2px solid rgba(0,229,255,.6);
+}
+.alt-slider::-moz-range-thumb{
+  width:22px;height:22px;border-radius:50%;
+  background:radial-gradient(circle,#fff 20%,var(--c) 70%);
+  box-shadow:0 0 10px rgba(0,229,255,.5);cursor:pointer;
+  border:2px solid rgba(0,229,255,.6);
+}
+</style>
+</head>
+<body>
+
+<!-- BG -->
+<div class="orb o1"></div>
+<div class="orb o2"></div>
+<div class="orb o3"></div>
+<canvas id="RAIN"></canvas>
+<div id="SCAN"></div>
+
+<!-- LOADING -->
+<div class="loading" id="LOAD">
+  <div class="spin"></div>
+  <div class="ltxt" id="LTXT">جاري تحليل الغلاف الجوي</div>
+</div>
+
+<!-- LAYERS MODAL -->
+<div class="ovlay" id="OV_L">
+  <div class="mbox mlaybx" style="max-width:490px">
+    <div class="mtit"><i class="fas fa-layer-group"></i><span id="TT_LY">طبقات الخريطة</span></div>
+    <div class="lgrid">
+      <button class="lit" onclick="setLy('radar',null,true);cOv('OV_L')"><i class="fas fa-satellite-dish"></i><span id="TT_L_RD">رادار الطقس</span></button>
+      <button class="lit" onclick="setLy('satellite',null,true);cOv('OV_L')"><i class="fas fa-satellite"></i><span id="TT_L_ST">القمر الصناعي</span></button>
+      <button class="lit" onclick="setLy('wind',null,true);cOv('OV_L')"><i class="fas fa-wind"></i><span id="TT_L1">الرياح</span></button>
+      <button class="lit" onclick="setLy('rain',null,true);cOv('OV_L')"><i class="fas fa-cloud-rain"></i><span id="TT_L2">مطر ورعد</span></button>
+      <button class="lit" onclick="setLy('temp',null,true);cOv('OV_L')"><i class="fas fa-temperature-high"></i><span id="TT_L3">الحرارة</span></button>
+      <button class="lit" onclick="setLy('clouds',null,true);cOv('OV_L')"><i class="fas fa-cloud"></i><span id="TT_L4">السحب</span></button>
+      <button class="lit" onclick="setLy('waves',null,true);cOv('OV_L')"><i class="fas fa-water"></i><span id="TT_L9">الأمواج</span></button>
+      <button class="lit" onclick="setLy('accumulation',null,true);cOv('OV_L')"><i class="fas fa-cloud-showers-heavy"></i><span id="TT_L_AC">تراكم الأمطار</span></button>
+      <button class="lit" onclick="setLy('gust',null,true);cOv('OV_L')"><i class="fas fa-flag"></i><span id="TT_L_GS">هبّات الرياح</span></button>
+      <button class="lit" onclick="setLy('so2',null,true);cOv('OV_L')"><i class="fas fa-flask"></i><span id="TT_L_SO2">SO₂</span></button>
+      <button class="lit" onclick="setLy('ozone',null,true);cOv('OV_L')"><i class="fas fa-circle-dot"></i><span id="TT_L_OZ">الأوزون السطحي</span></button>
+      <button class="lit" onclick="setLy('cosc',null,true);cOv('OV_L')"><i class="fas fa-smog"></i><span id="TT_L_CO">تركيز CO</span></button>
+      <button class="lit" onclick="setLy('dustStorm',null,true);cOv('OV_L')"><i class="fas fa-skull"></i><span id="TT_L_DS">كتلة الغبار</span></button>
+      <button class="lit" onclick="setLy('pressure',null,true);cOv('OV_L')"><i class="fas fa-gauge-high"></i><span id="TT_L8">الضغط</span></button>
+      <button class="lit" onclick="setLy('capAlerts',null,true);cOv('OV_L')"><i class="fas fa-triangle-exclamation"></i><span id="TT_L_CA">التوقعات الخطرة</span></button>
+      <button class="lit" onclick="setLy('alerts',null,true);cOv('OV_L')"><i class="fas fa-bell"></i><span id="TT_L_AL">تحذيرات الطقس</span></button>
+      <button class="lit" onclick="setLy('drought',null,true);cOv('OV_L')"><i class="fas fa-droplet-slash"></i><span id="TT_L_DR">مراقبة الجفاف</span></button>
+      <button class="lit" onclick="setLy('fireDanger',null,true);cOv('OV_L')"><i class="fas fa-fire"></i><span id="TT_L_FD">Fire Danger</span></button>
+      <button class="lit" onclick="setLy('dust',null,true);cOv('OV_L')"><i class="fas fa-wind"></i><span id="TT_L5">الغبار</span></button>
+      <button class="lit" onclick="setLy('dew',null,true);cOv('OV_L')"><i class="fas fa-droplet"></i><span id="TT_L6">الندى</span></button>
+      <button class="lit" onclick="setLy('pollen',null,true);cOv('OV_L')"><i class="fas fa-seedling"></i><span id="TT_L7">غبار الطلع</span></button>
+    </div>
+    <!-- شريط الارتفاع -->
+    <div class="alt-slider-wrap">
+      <div class="alt-label"><i class="fas fa-layer-group" style="color:var(--c)"></i> <span id="TT_ALT">الارتفاع:</span> <span id="ALT_VAL">سطح الأرض</span></div>
+      <input type="range" class="alt-slider" id="ALT_SL" min="0" max="5" value="0" oninput="setAlt(this.value)"/>
+    </div>
+    <button class="closebtn" onclick="cOv('OV_L')" id="TT_LC">إغلاق</button>
+  </div>
+</div>
+
+<!-- NOTES MODAL -->
+<div class="ovlay" id="OV_N">
+  <div class="mbox mapibx" style="border-color:rgba(168,85,247,.25);max-width:420px">
+    <div class="mtit"><i class="fas fa-note-sticky" style="color:var(--v)"></i><span id="TT_NT">ملاحظاتي</span></div>
+    <div class="notes-meta" id="NT_CNT">0 / 500 حرف</div>
+    <textarea class="notes-area" id="NTINP" placeholder="اكتب ملاحظاتك هنا..." maxlength="500" oninput="updNoteCount()"></textarea>
+    <div class="notes-contact">
+      <div><i class="fas fa-phone"></i>00963998854450</div>
+      <div><i class="fas fa-envelope"></i><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="d7b9beb3b6bba0b6a3b1b6eeee97b0bab6bebbf9b4b8ba">[email&#160;protected]</a></div>
+    </div>
+    <button class="asave" style="background:rgba(168,85,247,.12);border-color:rgba(168,85,247,.4);color:var(--v);text-shadow:0 0 8px rgba(168,85,247,.3)" onclick="saveNote()" id="TT_NS">💾 حفظ الملاحظة</button>
+    <button class="asave" style="background:rgba(0,229,255,.10);border-color:rgba(0,229,255,.4);color:var(--c);text-shadow:0 0 8px rgba(0,229,255,.3);margin-top:0" onclick="sendNote()" id="TT_NSND">📤 إرسال بالبريد</button>
+    <button class="adel" onclick="clearNote()" id="TT_ND">🗑 مسح الملاحظة</button>
+    <button class="closebtn" onclick="cOv('OV_N')" id="TT_NC">إغلاق</button>
+  </div>
+</div>
+
+<!-- API MODAL -->
+<div class="ovlay" id="OV_K">
+  <div class="mbox mapibx">
+    <div class="mtit"><i class="fas fa-key"></i><span id="TT_KT">مفتاح OpenWeatherMap</span></div>
+    <div class="ast no" id="KST"><i class="fas fa-circle-exclamation"></i><span id="TT_KS">لا يوجد مفتاح — وضع العرض</span></div>
+    <label class="albl" id="TT_KL">أدخل مفتاح API:</label>
+    <input class="ainp" id="KINP" placeholder="e.g. a1b2c3d4e5f67890..." autocomplete="off"/>
+    <button class="asave" onclick="saveKey()" id="TT_KA">حفظ وتطبيق</button>
+    <button class="adel"  onclick="delKey()"  id="TT_KD">حذف المفتاح</button>
+    <div class="ahint"><span id="TT_H1">مفتاح مجاني من</span> <a href="https://openweathermap.org/api" target="_blank">openweathermap.org</a><br><span id="TT_H2">يُحفظ في المتصفح تلقائياً</span></div>
+    <button class="closebtn" onclick="cOv('OV_K')" id="TT_KC">إغلاق</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div class="app">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="logo">AERO<em>-X</em></div>
+    <div class="sig">NIDAL WATFA</div> <!-- الاسم الإنجليزي بخط Cairo -->
+    <div class="livepill"><div class="ldot"></div>LIVE</div>
+    <div class="sp"></div>
+    <select class="langsel" id="LANG" onchange="setLang(this.value)">
+      <option value="ar">🇸🇾 العربية</option>
+      <option value="en">🇬🇧 English</option>
+      <option value="fr">🇫🇷 Français</option>
+      <option value="de">🇩🇪 Deutsch</option>
+      <option value="es">🇪🇸 Español</option>
+      <option value="it">🇮🇹 Italiano</option>
+      <option value="ru">🇷🇺 Русский</option>
+      <option value="tr">🇹🇷 Türkçe</option>
+      <option value="fa">🇮🇷 فارسی</option>
+      <option value="zh">🇨🇳 中文</option>
+    </select>
+    <div class="btns">
+      <!-- ALL ICON BUTTONS ARE REAL <button> ELEMENTS -->
+      <button class="ib" id="IBGPS" onclick="getGPS()" title="GPS"><i class="fas fa-location-crosshairs"></i></button>
+      <button class="ib" id="IBKEY" onclick="oOv('OV_K')" title="API Key"><i class="fas fa-key"></i><span class="kd" id="KDOT"></span></button>
+      <button class="ib" onclick="oOv('OV_L')" title="Layers"><i class="fas fa-layer-group"></i></button>
+      <button class="ib" id="IBCON" onclick="togCon()" title="Console"><i class="fas fa-terminal"></i></button>
+      <button class="ib" onclick="oOv('OV_N')" title="Notes" style="color:var(--v)"><i class="fas fa-note-sticky"></i></button>
+      <!-- زر المشاركة (يفتح القائمة المنسدلة) -->
+      <button class="ib" id="IBSHARE" onclick="toggleShareDropdown()" title="Share"><i class="fas fa-share-nodes"></i></button>
+      <!-- زر تثبيت التطبيق (PWA) يظهر عند دعم التثبيت -->
+      <button class="ib" id="IBINSTALL" onclick="installApp()" title="تثبيت التطبيق" style="display:none"><i class="fas fa-download"></i></button>
+    </div>
+    <!-- قائمة المشاركة المنسدلة -->
+    <div class="share-dropdown" id="shareDropdown">
+      <button class="share-item" onclick="shareAction('native')" id="SHARE_NATIVE"><i class="fas fa-share-nodes"></i> <span id="TT_SH_NAT">مشاركة</span></button>
+      <div style="height:1px;background:var(--line2);margin:3px 0"></div>
+      <button class="share-item" onclick="shareAction('copy')"><i class="fas fa-link"></i> <span id="TT_SH_CP">نسخ الرابط</span></button>
+      <button class="share-item" onclick="shareAction('whatsapp')"><i class="fab fa-whatsapp" style="color:#25d366"></i> WhatsApp</button>
+      <button class="share-item" onclick="shareAction('twitter')"><i class="fab fa-twitter" style="color:#1da1f2"></i> Twitter / X</button>
+      <button class="share-item" onclick="shareAction('facebook')"><i class="fab fa-facebook" style="color:#1877f2"></i> Facebook</button>
+      <button class="share-item" onclick="shareAction('email')"><i class="fas fa-envelope"></i> <span id="TT_SH_EM">البريد الإلكتروني</span></button>
+    </div>
+  </div>
+
+  <!-- SEARCH -->
+  <div class="srow" id="SROW">
+    <div class="swrap">
+      <input class="sinp" id="SINP"
+        placeholder="ابحث عن أي مدينة أو قرية..."
+        oninput="onAC(this.value)"
+        onkeydown="onSK(event)"
+        autocomplete="off"/>
+      <button class="sbtn" onclick="doSrch()"><i class="fas fa-magnifying-glass"></i></button>
+      <div class="acdrop" id="ACDR"></div>
+    </div>
+    <button class="gbtn" onclick="oOv('OV_L')">
+      <i class="fas fa-earth-americas"></i><span id="TT_GB">رصد عالمي</span>
+    </button>
+  </div>
+
+  <!-- BADGES -->
+  <div class="bdg bdgW" id="BDG_D"><i class="fas fa-circle-info"></i><span id="TT_BD">وضع العرض — اضغط 🔑 لإضافة مفتاح API</span></div>
+  <div class="bdg bdgG" id="BDG_K"><i class="fas fa-circle-check"></i><span id="TT_BK">مفتاح API نشط — بيانات حية</span></div>
+
+  <!-- FAVS -->
+  <div class="favrow" id="FAVROW" style="display:none"></div>
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="herotop">
+      <div class="cpill"><i class="fas fa-location-dot"></i><span id="CITY">DAMASCUS</span></div>
+      <button class="favbtn" id="FAVBTN" onclick="togFav()"><i class="fas fa-star"></i></button>
+    </div>
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-top:4px">
+      <div>
+        <div class="temp" id="TEMP">5<sup>°</sup></div>
+        <div class="trange">
+          <div class="tlo"><i class="fas fa-arrow-down"></i><span id="TLO">3°</span></div>
+          <div class="thi"><i class="fas fa-arrow-up"></i><span id="THI">5°</span></div>
+        </div>
+        <div class="feels"><i class="fas fa-thermometer-half" style="color:var(--c)"></i><span id="FEELS">الملموسة 2°</span></div>
+      </div>
+      <div class="condside">
+        <div class="cico" id="CICO">🌧️</div>
+        <div class="ctag" id="CTAG">RAINY</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats">
+    <div class="stat"><div class="sico">💧</div><div class="sv"><span id="SH">72</span><span class="su">%</span></div><div class="sl" id="LH">الرطوبة</div></div>
+    <div class="stat"><div class="sico">🌬️</div><div class="sv"><span id="SW">18</span><span class="su" id="WU">كم/س</span></div><div class="sl" id="LW">الرياح</div></div>
+    <div class="stat"><div class="sico">👁️</div><div class="sv"><span id="SV">8</span><span class="su" id="VU">كم</span></div><div class="sl" id="LV">الرؤية</div></div>
+    <div class="stat"><div class="sico">⬇️</div><div class="sv"><span id="SP">1008</span><span class="su">hPa</span></div><div class="sl" id="LP">الضغط</div></div>
+  </div>
+
+  <!-- MAP -->
+  <div class="mapsec" id="MAPSEC">
+    <div class="maphdr">
+      <div class="maptit"><i class="fas fa-map-location-dot"></i><span id="TT_MT">الخريطة الجوية</span></div>
+      <div class="maplys">
+        <button class="mlb on" id="MLB_W"  onclick="setLy('wind',this)"     ><span id="MLB_W_T">الرياح</span></button>
+        <button class="mlb"    id="MLB_R"  onclick="setLy('rain',this)"     ><span id="MLB_R_T">المطر</span></button>
+        <button class="mlb"    id="MLB_T"  onclick="setLy('temp',this)"     ><span id="MLB_T_T">الحرارة</span></button>
+        <button class="mlb"    id="MLB_C"  onclick="setLy('clouds',this)"   ><span id="MLB_C_T">السحب</span></button>
+        <button class="mlb"    id="MLB_RD" onclick="setLy('radar',this)"    ><span id="MLB_RD_T">الرادار</span></button>
+        <button class="mlb"    id="MLB_ST" onclick="setLy('satellite',this)"><span id="MLB_ST_T">القمر الصناعي</span></button>
+        <button class="mlb"    id="MLB_GS" onclick="setLy('gust',this)"     ><span id="MLB_GS_T">هبّات الرياح</span></button>
+        <button class="mlb"    id="MLB_AC" onclick="setLy('accumulation',this)"><span id="MLB_AC_T">تراكم الأمطار</span></button>
+        <button class="mlb"    id="MLB_WV" onclick="setLy('waves',this)"    ><span id="MLB_WV_T">الأمواج</span></button>
+        <button class="mlb"    id="MLB_PR" onclick="setLy('pressure',this)" ><span id="MLB_PR_T">الضغط</span></button>
+        <button class="fsb"    onclick="togFS()" title="Fullscreen"><i class="fas fa-expand"></i></button>
+      </div>
+    </div>
+    <iframe id="WINDY" class="mapframe" src="about:blank" frameborder="0" allowfullscreen allow="fullscreen; geolocation; accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"></iframe>
+  </div>
+
+  <!-- HOURLY -->
+  <div class="scard">
+    <div class="shdr"><i class="fas fa-chart-line"></i><span id="TT_HR">HOURLY TREND</span></div>
+    <div class="hscroll" id="HOURLY"></div>
+  </div>
+
+  <!-- QUICK -->
+  <div class="qgrid">
+    <button class="qc q1" onclick="setLy('wind');scrMap()"><i class="fas fa-wind"></i><span id="TT_QW">الرياح</span></button>
+    <button class="qc q2" onclick="setLy('rain');scrMap()"><i class="fas fa-cloud-rain"></i><span id="TT_QR">المطر</span></button>
+    <button class="qc q3" onclick="setLy('temp');scrMap()"><i class="fas fa-temperature-high"></i><span id="TT_QH">الحرارة</span></button>
+    <button class="qc q4" onclick="setLy('clouds');scrMap()"><i class="fas fa-cloud"></i><span id="TT_QS">السحب</span></button>
+  </div>
+
+  <!-- UV + SUN + مؤشرات محمولة جواً -->
+  <div class="exrow">
+    <div class="exc">
+      <div class="extit"><i class="fas fa-sun"></i><span id="TT_UV">مؤشر الأشعة</span></div>
+      <div class="uvv" id="UVV">4</div>
+      <div class="uvl" id="UVL">معتدل</div>
+      <div class="uvbg"><div class="uvf" id="UVBAR" style="width:35%"></div></div>
+      <!-- عناصر جديدة للغبار وغبار الطلع -->
+      <div class="airborne-row">
+        <div class="airborne-item"><span class="value" id="DUST">15</span><span class="label"> غبار (µg/m³)</span></div>
+        <div class="airborne-item"><span class="value" id="POLLEN">45</span><span class="label"> طلع (grains/m³)</span></div>
+      </div>
+    </div>
+    <div class="exc">
+      <div class="extit"><i class="fas fa-clock"></i><span id="TT_SN">الشروق والغروب</span></div>
+      <div class="sunrow">
+        <div class="sunit"><div class="suico">🌅</div><div class="sutm" id="SRISE">06:21</div><div class="sulb" id="TT_SR">شروق</div></div>
+        <div class="sunln"></div>
+        <div class="sunit"><div class="suico">🌇</div><div class="sutm" id="SSET">17:48</div><div class="sulb" id="TT_SS">غروب</div></div>
+      </div>
+      <!-- عنصر الندى -->
+      <div style="margin-top:10px; text-align:center; font-size:11px; color:var(--t2)"><i class="fas fa-droplet" style="color:var(--c)"></i> <span id="DEW">الندى: 2°C</span></div>
+    </div>
+  </div>
+
+  <!-- AQI -->
+  <div class="aqic">
+    <div class="aqihdr"><i class="fas fa-wind"></i><span id="TT_AQ">جودة الهواء</span></div>
+    <div class="aqiv" id="AQIV">25</div>
+    <div class="aqil" id="AQIL">PM10 الجسيمات الدقيقة</div>
+    <div class="aqib ag" id="AQIB">جيد</div>
+    <div class="aqibg"><div class="aqif" id="AQIF" style="width:12%"></div></div>
+    <div class="aqisc"><span>0</span><span>50</span><span>100</span><span>150</span><span>200+</span></div>
+    <div class="aqidet">
+      <div class="aii"><div class="aiv" id="PM25">12</div><div class="ail">PM2.5</div></div>
+      <div class="aii"><div class="aiv" id="PM10">25</div><div class="ail">PM10</div></div>
+      <div class="aii"><div class="aiv" id="O3V">38</div><div class="ail">O₃</div></div>
+    </div>
+  </div>
+
+  <!-- WEEKLY -->
+  <div class="scard">
+    <div class="shdr"><i class="fas fa-calendar-week"></i><span id="TT_WK">توقعات 15 يوم</span></div>
+    <div class="wgrid" id="WEEKLY"></div>
+  </div>
+
+  <!-- CONSOLE -->
+  <div class="concard" id="CONCARD" style="display:none">
+    <div class="conhdr">
+      <div class="cdots"><span class="cdot cd1"></span><span class="cdot cd2"></span><span class="cdot cd3"></span></div>
+      <div class="contit"><i class="fas fa-terminal"></i>AERO-X CONSOLE</div>
+      <div class="conacts">
+        <button class="cbtn" onclick="clrCon()">CLEAR</button>
+        <button class="cbtn" onclick="expCon()">EXPORT</button>
+      </div>
+    </div>
+    <div class="conbody" id="CONLOG"></div>
+    <div class="coninrow">
+      <span class="conprompt">aero-x $</span>
+      <input class="coninp" id="CONINP" placeholder="type 'help'" onkeydown="onCC(event)"/>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="foot">
+    <div class="footsig">NIDAL WATFA</div>
+    <div class="footcopy">AERO-X · CYBER EDITION · 2026</div>
+  </div>
+
+</div><!-- /app -->
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+// ══════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════
+let KEY  = localStorage.getItem('ax_key')||'';
+let lang = 'ar';
+let lyr  = 'wind'; // default layer
+let lat  = 33.51, lon = 36.29;
+let WD   = null;   // current weather data
+let favs = JSON.parse(localStorage.getItem('ax_favs')||'[]');
+let conV = false;
+let acT  = null, acList = [];
+const logs = [];
+const ICO  = {Clear:'☀️',Clouds:'⛅',Rain:'🌧️',Snow:'❄️',Thunderstorm:'⛈️',Drizzle:'🌦️',Mist:'🌫️',Fog:'🌫️'};
+
+// ══════════════════════════════════════════
+// DEMO DATA (محسّنة مع قيم للغبار والندى وغبار الطلع)
+// ══════════════════════════════════════════
+const DEMO_TEMPLATE = {
+  city:'Damascus', temp:5, feels:2, low:3, high:5, humidity:72, wind:18, visibility:8, pressure:1008,
+  condition:'Rain', uv:4, sunrise:'06:21', sunset:'17:48',
+  dust:15, pollen:45, dew:2,  // قيم افتراضية للمؤشرات الجديدة
+  aqi:25, pm25:12, pm10:25, o3:38,
+  forecast:[
+    {h:5,l:3,c:'Rain'},{h:7,l:2,c:'Clouds'},{h:10,l:4,c:'Clear'},{h:8,l:3,c:'Clouds'},
+    {h:6,l:1,c:'Rain'},{h:9,l:4,c:'Clear'},{h:11,l:5,c:'Clear'},
+    {h:13,l:6,c:'Clear'},{h:12,l:5,c:'Clouds'},{h:8,l:3,c:'Rain'},
+    {h:9,l:4,c:'Clouds'},{h:14,l:7,c:'Clear'},{h:15,l:8,c:'Clear'},
+    {h:10,l:5,c:'Clouds'},{h:7,l:2,c:'Rain'}
+  ],
+  hourly:[
+    {t:'now',v:5,c:'Rain'},{t:'01:00',v:4,c:'Rain'},{t:'02:00',v:4,c:'Rain'},
+    {t:'03:00',v:3,c:'Clouds'},{t:'04:00',v:3,c:'Clouds'},{t:'05:00',v:4,c:'Clear'},{t:'06:00',v:5,c:'Clear'}
+  ]
+};
+
+// ══════════════════════════════════════════
+// TRANSLATIONS (مختصرة للاختصار)
+// ══════════════════════════════════════════
+const TR={
+ar:{dir:'rtl',srch:'ابحث عن أي مدينة أو قرية...',load:'جاري تحليل الغلاف الجوي',feels:'الملموسة',
+  demo:'وضع العرض — اضغط 🔑 لإضافة مفتاح API',ok:'مفتاح API نشط — بيانات حية',
+  glob:'رصد عالمي',now:'الآن',mt:'الخريطة الجوية',ht:'HOURLY TREND',wt:'توقعات 15 يوم',
+  aqt:'جودة الهواء',lyt:'طبقات الخريطة',
+  l1:'الرياح',l2:'مطر ورعد',l3:'الحرارة',l4:'السحب',l5:'الغبار',l6:'الندى',l7:'غبار الطلع',l8:'الضغط',l9:'الأمواج',
+  lRD:'رادار الطقس',lST:'القمر الصناعي',lGS:'هبّات الرياح',lAC:'تراكم الأمطار',
+  cl:'إغلاق',qw:'الرياح',qr:'المطر',qh:'الحرارة',qs:'السحب',
+  lh:'الرطوبة',lw:'الرياح',lv:'الرؤية',lp:'الضغط',wu:'كم/س',vu:'كم',
+  bw:'الرياح',br:'المطر',bt:'الحرارة',bc:'السحب',
+  kt:'مفتاح OpenWeatherMap',kl:'أدخل مفتاح API:',ks:'حفظ وتطبيق',kd:'حذف المفتاح',
+  h1:'مفتاح مجاني من',h2:'يُحفظ في المتصفح',kok:'✓ مفتاح نشط',kno:'لا يوجد مفتاح',
+  nf:'المدينة غير موجودة',
+  uvt:'مؤشر الأشعة',snt:'الشروق والغروب',srl:'شروق',ssl:'غروب',
+  uvls:['منخفض','معتدل','مرتفع','مرتفع جداً','خطر'],
+  ag:'جيد',am:'مقبول',ap:'غير صحي',
+  days:['أحد','اثنين','ثلاثاء','أربعاء','خميس','جمعة','سبت'],
+  cond:{Clear:'سماء صافية',Clouds:'غائم',Rain:'ممطر',Snow:'ثلجي',Thunderstorm:'عاصفة',Drizzle:'رذاذ',Mist:'ضبابي',Fog:'ضباب'},
+  nt:'ملاحظاتي',ns:'حفظ الملاحظة',nd:'مسح الملاحظة'},
+
+en:{dir:'ltr',srch:'Search city or village...',load:'Fetching Atmosphere',feels:'Feels like',
+  demo:'Demo Mode — Tap 🔑 to add API key',ok:'API key active — Live data',
+  glob:'Global View',now:'NOW',mt:'Weather Map',ht:'HOURLY TREND',wt:'15-Day Outlook',
+  aqt:'Air Quality',lyt:'Map Layers',
+  l1:'Wind',l2:'Rain & Thunder',l3:'Temp',l4:'Clouds',l5:'Dust',l6:'Dew',l7:'Pollen',l8:'Pressure',l9:'Waves',
+  lRD:'Radar',lST:'Satellite',lGS:'Gusts',lAC:'Precip. Accum.',
+  cl:'Close',qw:'Wind',qr:'Rain',qh:'Temp',qs:'Clouds',
+  lh:'Humidity',lw:'Wind',lv:'Visibility',lp:'Pressure',wu:'km/h',vu:'km',
+  bw:'Wind',br:'Rain',bt:'Temp',bc:'Clouds',
+  kt:'OpenWeatherMap API Key',kl:'Enter API key:',ks:'Save & Apply',kd:'Remove Key',
+  h1:'Free key at',h2:'Saved in your browser',kok:'✓ API key active',kno:'No key — Demo mode',
+  nf:'City not found',
+  uvt:'UV Index',snt:'Sunrise & Sunset',srl:'Sunrise',ssl:'Sunset',
+  uvls:['Low','Moderate','High','Very High','Extreme'],
+  ag:'Good',am:'Moderate',ap:'Unhealthy',
+  days:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
+  cond:{Clear:'Clear Sky',Clouds:'Cloudy',Rain:'Rainy',Snow:'Snowy',Thunderstorm:'Thunderstorm',Drizzle:'Drizzle',Mist:'Misty',Fog:'Foggy'},
+  nt:'My Notes',ns:'Save Note',nd:'Clear Note'},
+
+fr:{dir:'ltr',srch:'Rechercher une ville...',load:'Analyse atmosphérique',feels:'Ressenti',
+  demo:'Mode démo — Appuyez 🔑 pour API',ok:'Clé API active — données réelles',
+  glob:'Vue mondiale',now:'MAINT.',mt:'Carte météo',ht:'TENDANCE HORAIRE',wt:'Prévisions 15 jours',
+  aqt:'Qualité de l\'air',lyt:'Couches carte',
+  l1:'Vent',l2:'Pluie & Orage',l3:'Temp.',l4:'Nuages',l5:'Poussière',l6:'Rosée',l7:'Pollen',l8:'Pression',l9:'Vagues',
+  lRD:'Radar',lST:'Satellite',lGS:'Rafales',lAC:'Précip. cumulées',
+  cl:'Fermer',qw:'Vent',qr:'Pluie',qh:'Temp.',qs:'Nuages',
+  lh:'Humidité',lw:'Vent',lv:'Visibilité',lp:'Pression',wu:'km/h',vu:'km',
+  bw:'Vent',br:'Pluie',bt:'Temp.',bc:'Nuages',
+  kt:'Clé API OpenWeatherMap',kl:'Saisir la clé:',ks:'Enregistrer',kd:'Supprimer',
+  h1:'Clé gratuite sur',h2:'Sauvegardé dans le navigateur',kok:'✓ Clé active',kno:'Pas de clé — démo',
+  nf:'Ville introuvable',
+  uvt:'Indice UV',snt:'Lever & Coucher',srl:'Lever',ssl:'Coucher',
+  uvls:['Faible','Modéré','Élevé','Très élevé','Extrême'],
+  ag:'Bon',am:'Modéré',ap:'Mauvais',
+  days:['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'],
+  cond:{Clear:'Ciel dégagé',Clouds:'Nuageux',Rain:'Pluvieux',Snow:'Neigeux',Thunderstorm:'Orage',Drizzle:'Bruine',Mist:'Brumeux',Fog:'Brouillard'},
+  nt:'Mes notes',ns:'Enregistrer',nd:'Effacer'},
+
+de:{dir:'ltr',srch:'Stadt suchen...',load:'Atmosphäre wird geladen',feels:'Gefühlt',
+  demo:'Demo-Modus — 🔑 für API-Schlüssel',ok:'API-Schlüssel aktiv — Live-Daten',
+  glob:'Weltansicht',now:'JETZT',mt:'Wetterkarte',ht:'STÜNDLICHER TREND',wt:'7-Tage-Prognose',
+  aqt:'Luftqualität',lyt:'Kartenebenen',
+  l1:'Wind',l2:'Regen & Gewitter',l3:'Temp.',l4:'Wolken',l5:'Staub',l6:'Tau',l7:'Pollen',l8:'Druck',l9:'Wellen',
+  lRD:'Radar',lST:'Satellit',lGS:'Böen',lAC:'Niederschlag kum.',
+  cl:'Schließen',qw:'Wind',qr:'Regen',qh:'Temp.',qs:'Wolken',
+  lh:'Luftfeucht.',lw:'Wind',lv:'Sichtweite',lp:'Druck',wu:'km/h',vu:'km',
+  bw:'Wind',br:'Regen',bt:'Temp.',bc:'Wolken',
+  kt:'OpenWeatherMap API-Schlüssel',kl:'API-Schlüssel eingeben:',ks:'Speichern',kd:'Löschen',
+  h1:'Kostenloser Schlüssel auf',h2:'Im Browser gespeichert',kok:'✓ Schlüssel aktiv',kno:'Kein Schlüssel',
+  nf:'Stadt nicht gefunden',
+  uvt:'UV-Index',snt:'Sonnenauf- und untergang',srl:'Aufgang',ssl:'Untergang',
+  uvls:['Niedrig','Mäßig','Hoch','Sehr hoch','Extrem'],
+  ag:'Gut',am:'Mäßig',ap:'Ungesund',
+  days:['So','Mo','Di','Mi','Do','Fr','Sa'],
+  cond:{Clear:'Klarer Himmel',Clouds:'Bewölkt',Rain:'Regnerisch',Snow:'Schneereich',Thunderstorm:'Gewitter',Drizzle:'Nieselregen',Mist:'Dunstig',Fog:'Neblig'},
+  nt:'Meine Notizen',ns:'Speichern',nd:'Löschen'},
+
+es:{dir:'ltr',srch:'Buscar ciudad...',load:'Analizando la atmósfera',feels:'Sensación',
+  demo:'Modo demo — 🔑 para API',ok:'Clave API activa — datos reales',
+  glob:'Vista global',now:'AHORA',mt:'Mapa del tiempo',ht:'TENDENCIA HORARIA',wt:'Pronóstico 7 días',
+  aqt:'Calidad del aire',lyt:'Capas del mapa',
+  l1:'Viento',l2:'Lluvia y tormenta',l3:'Temp.',l4:'Nubes',l5:'Polvo',l6:'Rocío',l7:'Polen',l8:'Presión',l9:'Olas',
+  lRD:'Radar',lST:'Satélite',lGS:'Ráfagas',lAC:'Precip. acum.',
+  cl:'Cerrar',qw:'Viento',qr:'Lluvia',qh:'Temp.',qs:'Nubes',
+  lh:'Humedad',lw:'Viento',lv:'Visibilidad',lp:'Presión',wu:'km/h',vu:'km',
+  bw:'Viento',br:'Lluvia',bt:'Temp.',bc:'Nubes',
+  kt:'Clave API OpenWeatherMap',kl:'Ingresar clave API:',ks:'Guardar',kd:'Eliminar',
+  h1:'Clave gratuita en',h2:'Guardado en el navegador',kok:'✓ Clave activa',kno:'Sin clave — demo',
+  nf:'Ciudad no encontrada',
+  uvt:'Índice UV',snt:'Amanecer y atardecer',srl:'Amanecer',ssl:'Atardecer',
+  uvls:['Bajo','Moderado','Alto','Muy alto','Extremo'],
+  ag:'Bueno',am:'Moderado',ap:'No saludable',
+  days:['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'],
+  cond:{Clear:'Cielo despejado',Clouds:'Nublado',Rain:'Lluvioso',Snow:'Nevado',Thunderstorm:'Tormenta',Drizzle:'Llovizna',Mist:'Brumoso',Fog:'Niebla'},
+  nt:'Mis notas',ns:'Guardar',nd:'Borrar'},
+
+it:{dir:'ltr',srch:'Cerca città...',load:'Analisi atmosfera',feels:'Percepito',
+  demo:'Modalità demo — 🔑 per API',ok:'Chiave API attiva — dati live',
+  glob:'Vista globale',now:'ORA',mt:'Mappa meteo',ht:'TREND ORARIO',wt:'Previsioni 7 giorni',
+  aqt:'Qualità dell\'aria',lyt:'Livelli mappa',
+  l1:'Vento',l2:'Pioggia e tuoni',l3:'Temp.',l4:'Nuvole',l5:'Polvere',l6:'Rugiada',l7:'Polline',l8:'Pressione',l9:'Onde',
+  lRD:'Radar',lST:'Satellite',lGS:'Raffiche',lAC:'Precip. cumulate',
+  cl:'Chiudi',qw:'Vento',qr:'Pioggia',qh:'Temp.',qs:'Nuvole',
+  lh:'Umidità',lw:'Vento',lv:'Visibilità',lp:'Pressione',wu:'km/h',vu:'km',
+  bw:'Vento',br:'Pioggia',bt:'Temp.',bc:'Nuvole',
+  kt:'Chiave API OpenWeatherMap',kl:'Inserisci chiave:',ks:'Salva',kd:'Elimina',
+  h1:'Chiave gratuita su',h2:'Salvato nel browser',kok:'✓ Chiave attiva',kno:'Nessuna chiave',
+  nf:'Città non trovata',
+  uvt:'Indice UV',snt:'Alba e tramonto',srl:'Alba',ssl:'Tramonto',
+  uvls:['Basso','Moderato','Alto','Molto alto','Estremo'],
+  ag:'Buono',am:'Moderato',ap:'Insalubre',
+  days:['Dom','Lun','Mar','Mer','Gio','Ven','Sab'],
+  cond:{Clear:'Cielo sereno',Clouds:'Nuvoloso',Rain:'Piovoso',Snow:'Nevoso',Thunderstorm:'Temporale',Drizzle:'Pioggerella',Mist:'Nebbioso',Fog:'Nebbia'},
+  nt:'Le mie note',ns:'Salva',nd:'Cancella'},
+
+ru:{dir:'ltr',srch:'Поиск города...',load:'Анализ атмосферы',feels:'Ощущается',
+  demo:'Демо режим — 🔑 для API',ok:'API ключ активен — реальные данные',
+  glob:'Глобальный вид',now:'СЕЙЧАС',mt:'Карта погоды',ht:'ПОЧАСОВОЙ ТРЕНД',wt:'Прогноз 7 дней',
+  aqt:'Качество воздуха',lyt:'Слои карты',
+  l1:'Ветер',l2:'Дождь и гроза',l3:'Темп.',l4:'Облака',l5:'Пыль',l6:'Роса',l7:'Пыльца',l8:'Давление',l9:'Волны',
+  lRD:'Радар',lST:'Спутник',lGS:'Порывы',lAC:'Осадки накоп.',
+  cl:'Закрыть',qw:'Ветер',qr:'Дождь',qh:'Темп.',qs:'Облака',
+  lh:'Влажность',lw:'Ветер',lv:'Видимость',lp:'Давление',wu:'км/ч',vu:'км',
+  bw:'Ветер',br:'Дождь',bt:'Темп.',bc:'Облака',
+  kt:'Ключ API OpenWeatherMap',kl:'Введите ключ API:',ks:'Сохранить',kd:'Удалить',
+  h1:'Бесплатный ключ на',h2:'Сохранено в браузере',kok:'✓ Ключ активен',kno:'Нет ключа',
+  nf:'Город не найден',
+  uvt:'УФ-индекс',snt:'Восход и закат',srl:'Восход',ssl:'Закат',
+  uvls:['Низкий','Умеренный','Высокий','Очень высокий','Экстремальный'],
+  ag:'Хорошо',am:'Умеренно',ap:'Вредно',
+  days:['Вс','Пн','Вт','Ср','Чт','Пт','Сб'],
+  cond:{Clear:'Ясно',Clouds:'Облачно',Rain:'Дождь',Snow:'Снег',Thunderstorm:'Гроза',Drizzle:'Морось',Mist:'Туманно',Fog:'Туман'},
+  nt:'Мои заметки',ns:'Сохранить',nd:'Удалить'},
+
+tr:{dir:'ltr',srch:'Şehir ara...',load:'Atmosfer analizi',feels:'Hissedilen',
+  demo:'Demo modu — 🔑 API anahtarı ekle',ok:'API anahtarı aktif — canlı veri',
+  glob:'Küresel görünüm',now:'ŞİMDİ',mt:'Hava haritası',ht:'SAATLİK TREND',wt:'7 günlük tahmin',
+  aqt:'Hava kalitesi',lyt:'Harita katmanları',
+  l1:'Rüzgar',l2:'Yağmur ve fırtına',l3:'Sıcaklık',l4:'Bulutlar',l5:'Toz',l6:'Çiy',l7:'Polen',l8:'Basınç',l9:'Dalgalar',
+  lRD:'Radar',lST:'Uydu',lGS:'Rüzgar savurmaları',lAC:'Yağış birikimi',
+  cl:'Kapat',qw:'Rüzgar',qr:'Yağmur',qh:'Sıcaklık',qs:'Bulutlar',
+  lh:'Nem',lw:'Rüzgar',lv:'Görüş',lp:'Basınç',wu:'km/s',vu:'km',
+  bw:'Rüzgar',br:'Yağmur',bt:'Sıcaklık',bc:'Bulutlar',
+  kt:'OpenWeatherMap API Anahtarı',kl:'API anahtarı girin:',ks:'Kaydet',kd:'Sil',
+  h1:'Ücretsiz anahtar',h2:'Tarayıcıda kaydedildi',kok:'✓ Anahtar aktif',kno:'Anahtar yok',
+  nf:'Şehir bulunamadı',
+  uvt:'UV İndeksi',snt:'Gün doğumu ve batımı',srl:'Doğum',ssl:'Batım',
+  uvls:['Düşük','Orta','Yüksek','Çok yüksek','Aşırı'],
+  ag:'İyi',am:'Orta',ap:'Sağlıksız',
+  days:['Paz','Pzt','Sal','Çar','Per','Cum','Cmt'],
+  cond:{Clear:'Açık hava',Clouds:'Bulutlu',Rain:'Yağmurlu',Snow:'Karlı',Thunderstorm:'Fırtına',Drizzle:'Çisenti',Mist:'Sisli',Fog:'Yoğun sis'},
+  nt:'Notlarım',ns:'Kaydet',nd:'Temizle'},
+
+fa:{dir:'rtl',srch:'جستجوی شهر...',load:'در حال تحلیل جو',feels:'احساس می‌شود',
+  demo:'حالت نمایشی — 🔑 برای کلید API',ok:'کلید API فعال — داده زنده',
+  glob:'نمای جهانی',now:'اکنون',mt:'نقشه آب و هوا',ht:'روند ساعتی',wt:'پیش‌بینی ۷ روز',
+  aqt:'کیفیت هوا',lyt:'لایه‌های نقشه',
+  l1:'باد',l2:'باران و رعد',l3:'دما',l4:'ابرها',l5:'گرد',l6:'شبنم',l7:'گرده گل',l8:'فشار',l9:'امواج',
+  lRD:'رادار',lST:'ماهواره',lGS:'وزش باد',lAC:'انباشت بارش',
+  cl:'بستن',qw:'باد',qr:'باران',qh:'دما',qs:'ابرها',
+  lh:'رطوبت',lw:'باد',lv:'دید',lp:'فشار',wu:'کم/س',vu:'کم',
+  bw:'باد',br:'باران',bt:'دما',bc:'ابرها',
+  kt:'کلید API OpenWeatherMap',kl:'کلید API را وارد کنید:',ks:'ذخیره',kd:'حذف',
+  h1:'کلید رایگان از',h2:'در مرورگر ذخیره شد',kok:'✓ کلید فعال',kno:'بدون کلید',
+  nf:'شهر پیدا نشد',
+  uvt:'شاخص UV',snt:'طلوع و غروب',srl:'طلوع',ssl:'غروب',
+  uvls:['پایین','متوسط','بالا','خیلی بالا','شدید'],
+  ag:'خوب',am:'متوسط',ap:'ناسالم',
+  days:['یک','دو','سه','چهار','پنج','جمعه','شنبه'],
+  cond:{Clear:'آسمان صاف',Clouds:'ابری',Rain:'بارانی',Snow:'برفی',Thunderstorm:'رعد و برق',Drizzle:'نم نم باران',Mist:'مه آلود',Fog:'مه غلیظ'},
+  nt:'یادداشت‌های من',ns:'ذخیره',nd:'پاک کردن'},
+
+zh:{dir:'ltr',srch:'搜索城市...',load:'正在获取大气数据',feels:'体感',
+  demo:'演示模式 — 点击 🔑 添加API密钥',ok:'API密钥已激活 — 实时数据',
+  glob:'全球视图',now:'现在',mt:'天气图',ht:'逐小时趋势',wt:'7天预报',
+  aqt:'空气质量',lyt:'地图图层',
+  l1:'风',l2:'雨和雷暴',l3:'气温',l4:'云',l5:'尘埃',l6:'露点',l7:'花粉',l8:'气压',l9:'海浪',
+  lRD:'雷达',lST:'卫星',lGS:'阵风',lAC:'累积降水',
+  cl:'关闭',qw:'风',qr:'雨',qh:'气温',qs:'云',
+  lh:'湿度',lw:'风',lv:'能见度',lp:'气压',wu:'千米/时',vu:'千米',
+  bw:'风',br:'雨',bt:'气温',bc:'云',
+  kt:'OpenWeatherMap API密钥',kl:'输入API密钥:',ks:'保存',kd:'删除',
+  h1:'免费密钥获取',h2:'保存在浏览器中',kok:'✓ 密钥已激活',kno:'无密钥 — 演示',
+  nf:'未找到城市',
+  uvt:'紫外线指数',snt:'日出与日落',srl:'日出',ssl:'日落',
+  uvls:['低','中等','高','很高','极端'],
+  ag:'良好',am:'中等',ap:'不健康',
+  days:['日','一','二','三','四','五','六'],
+  cond:{Clear:'晴朗',Clouds:'多云',Rain:'雨天',Snow:'雪天',Thunderstorm:'雷暴',Drizzle:'毛毛雨',Mist:'薄雾',Fog:'浓雾'},
+  nt:'我的笔记',ns:'保存',nd:'清除'}};
+
+// ══════════════════════════════════════════
+// RAIN — CANVAS (نفس الكود السابق)
+// ══════════════════════════════════════════
+(function(){
+  const cv=document.getElementById('RAIN');
+  const ctx=cv.getContext('2d');
+  let drops=[];
+  function resize(){
+    cv.width=window.innerWidth;cv.height=window.innerHeight;
+    drops=[];
+    for(let i=0;i<160;i++) drops.push({
+      x:Math.random()*cv.width,
+      y:Math.random()*cv.height,
+      len:Math.random()*60+20,
+      spd:Math.random()*2.5+1.2,
+      op:Math.random()*.45+.08,
+      w:Math.random()*.6+.3
+    });
+  }
+  resize();
+  window.addEventListener('resize',resize);
+  function frame(){
+    ctx.clearRect(0,0,cv.width,cv.height);
+    drops.forEach(d=>{
+      const g=ctx.createLinearGradient(d.x,d.y,d.x+d.len*.12,d.y+d.len);
+      g.addColorStop(0,'rgba(0,0,0,0)');
+      g.addColorStop(.5,`rgba(0,220,255,${d.op*.5})`);
+      g.addColorStop(1,`rgba(0,220,255,${d.op})`);
+      ctx.strokeStyle=g;
+      ctx.lineWidth=d.w;
+      ctx.lineCap='round';
+      ctx.beginPath();
+      ctx.moveTo(d.x,d.y);
+      ctx.lineTo(d.x+d.len*.12,d.y+d.len);
+      ctx.stroke();
+      d.y+=d.spd*2.5;d.x+=d.spd*.25;
+      if(d.y>cv.height+80){d.y=-100;d.x=Math.random()*cv.width;}
+    });
+    requestAnimationFrame(frame);
+  }
+  frame();
+})();
+
+// ══════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════
+const $=id=>document.getElementById(id);
+const set=(id,v)=>{const e=$(id);if(e)e.textContent=v};
+const ph=(id,v)=>{const e=$(id);if(e)e.placeholder=v};
+const ts=()=>new Date().toTimeString().slice(0,8);
+
+// ══════════════════════════════════════════
+// CONSOLE
+// ══════════════════════════════════════════
+function clog(msg,type='info'){
+  logs.push({t:ts(),msg,type});
+  const el=$('CONLOG');if(!el)return;
+  const d=document.createElement('div');d.className=`clog ${type}`;
+  d.innerHTML=`<span class="ct">[${ts()}]</span><span class="cm">${msg}</span>`;
+  el.appendChild(d);el.scrollTop=el.scrollHeight;
+}
+function clrCon(){$('CONLOG').innerHTML='';clog('cleared','sys')}
+function expCon(){
+  const t=logs.map(l=>`[${l.t}][${l.type.toUpperCase()}] ${l.msg}`).join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/plain;charset=utf-8,'+encodeURIComponent(t);
+  a.download='aero-x.log';a.click();clog('exported','ok');
+}
+function togCon(){
+  conV=!conV;$('CONCARD').style.display=conV?'block':'none';
+  $('IBCON').style.borderColor=conV?'var(--c)':'';
+  $('IBCON').style.color=conV?'var(--c)':'';
+  if(conV)$('CONINP').focus();
+}
+const CMDS={
+  help:()=>clog('cmds: help|clear|version|lang|weather|gps|key|demo','sys'),
+  clear:clrCon,
+  version:()=>clog('AERO-X Cyber Ed. v4 — NIDAL WATFA 2026','sys'),
+  lang:()=>clog(`lang: ${lang}`,'info'),
+  weather:()=>WD?clog(`${WD.city} ${WD.temp}°C ${WD.condition}`,'ok'):clog('no data','warn'),
+  gps:getGPS,
+  key:()=>clog(KEY?`key: ${KEY.slice(0,8)}••••`:'no key set','warn'),
+  demo:()=>{KEY='';updKey();loadW('Damascus');clog('demo mode','warn');}
+};
+function onCC(e){
+  if(e.key!=='Enter')return;
+  const i=$('CONINP'),c=i.value.trim().toLowerCase();i.value='';
+  if(!c)return;clog(`$ ${c}`,'sys');
+  CMDS[c]?CMDS[c]():clog(`unknown: '${c}'`,'err');
+}
+
+// ══════════════════════════════════════════
+// LANGUAGE
+// ══════════════════════════════════════════
+function setLang(l){
+  // fallback إلى الإنجليزية إذا اللغة غير موجودة
+  if(!TR[l]) l='en';
+  lang=l;const L=TR[l];
+  document.documentElement.dir=L.dir;document.documentElement.lang=l;
+  $('LANG').value=l;
+  ph('SINP',L.srch);set('LTXT',L.load);set('TT_GB',L.glob);
+  set('TT_MT',L.mt);set('TT_HR',L.ht);set('TT_WK',L.wt);set('TT_AQ',L.aqt);
+  set('TT_LY',L.lyt);
+  // طبقات النافذة المنبثقة
+  set('TT_L1',L.l1);set('TT_L2',L.l2);set('TT_L3',L.l3);
+  set('TT_L4',L.l4);set('TT_L5',L.l5);set('TT_L6',L.l6);
+  set('TT_L7',L.l7||'');set('TT_L8',L.l8);set('TT_L9',L.l9);
+  set('TT_L_RD',L.lRD);set('TT_L_ST',L.lST);set('TT_L_GS',L.lGS);set('TT_L_AC',L.lAC);
+  set('TT_LC',L.cl);set('TT_KC',L.cl);set('TT_NC',L.cl);
+  set('TT_QW',L.qw);set('TT_QR',L.qr);set('TT_QH',L.qh);set('TT_QS',L.qs);
+  set('LH',L.lh);set('LW',L.lw);set('LV',L.lv);set('LP',L.lp);
+  set('WU',L.wu);set('VU',L.vu);
+  // طبقات شريط الخريطة
+  set('MLB_W_T',L.bw||L.l1);set('MLB_R_T',L.br||L.l2);set('MLB_T_T',L.bt||L.l3);set('MLB_C_T',L.bc||L.l4);
+  set('MLB_RD_T',L.lRD);set('MLB_ST_T',L.lST);set('MLB_GS_T',L.lGS);
+  set('MLB_AC_T',L.lAC);set('MLB_WV_T',L.l9);set('MLB_PR_T',L.l8);
+  set('TT_KT',L.kt);set('TT_KL',L.kl);set('TT_KA',L.ks);set('TT_KD',L.kd);
+  set('TT_H1',L.h1);set('TT_H2',L.h2);
+  set('TT_BD',L.demo);set('TT_BK',L.ok);
+  set('TT_KS',KEY?L.kok:L.kno);
+  set('TT_UV',L.uvt);set('TT_SN',L.snt);set('TT_SR',L.srl);set('TT_SS',L.ssl);
+  // ملاحظات
+  set('TT_NT',L.nt);set('TT_NS',L.ns);set('TT_ND',L.nd);
+  if(WD)render(WD);
+  clog(`lang→${l}`,'info');
+}
+
+// ══════════════════════════════════════════
+// MAP (مع دعم طبقات Windy)
+// ══════════════════════════════════════════
+// ملاحظة: Windy يدعم طبقات محددة. سنستخدم أقرب تطابق.
+let altLevel = 'surface'; // مستوى الارتفاع الحالي
+
+const ALT_LEVELS = [
+  {val:'surface',   ar:'سطح الأرض', en:'Surface'},
+  {val:'1000h',     ar:'1000 hPa',   en:'1000 hPa'},
+  {val:'950h',      ar:'950 hPa',    en:'950 hPa'},
+  {val:'850h',      ar:'850 hPa',    en:'850 hPa'},
+  {val:'700h',      ar:'700 hPa',    en:'700 hPa'},
+  {val:'500h',      ar:'500 hPa',    en:'500 hPa'}
+];
+
+function setAlt(idx){
+  altLevel = ALT_LEVELS[idx].val;
+  const label = ALT_LEVELS[idx].ar;
+  set('ALT_VAL', label);
+  // تحديث شريط التدرج اللوني للمؤشر
+  const pct = (idx / 5) * 100;
+  document.getElementById('ALT_SL').style.background =
+    `linear-gradient(90deg,var(--c) ${pct}%,rgba(0,229,255,.15) ${pct}%)`;
+  loadMap();
+  clog(`alt→${altLevel}`,'info');
+}
+
+function wURL(a,o,l){
+  // كل طبقة: {overlay, product}
+  const layerCfg = {
+    wind:         {overlay:'wind',        product:'ecmwf'},
+    rain:         {overlay:'rain',        product:'ecmwf'},
+    temp:         {overlay:'temp',        product:'ecmwf'},
+    clouds:       {overlay:'clouds',      product:'ecmwf'},
+    waves:        {overlay:'waves',       product:'ecmwf'},
+    pressure:     {overlay:'pressure',    product:'ecmwf'},
+    gust:         {overlay:'gust',        product:'ecmwf'},
+    accumulation: {overlay:'rainAccu',    product:'ecmwf'},
+    dew:          {overlay:'dewpoint',    product:'ecmwf'},
+    dust:         {overlay:'pm2p5',       product:'cams'},
+    pollen:       {overlay:'gpollen',     product:'cams'},
+    so2:          {overlay:'so2',         product:'cams'},
+    ozone:        {overlay:'ozone',       product:'cams'},
+    cosc:         {overlay:'cosc',        product:'cams'},
+    dustStorm:    {overlay:'dust',        product:'cams'},
+    fireDanger:   {overlay:'fireDanger',  product:'cams'},
+    drought:      {overlay:'sst',         product:'ecmwf'},
+    radar:        {overlay:'radar',       product:'radar'},
+    satellite:    {overlay:'satellite',   product:'satellite'},
+    capAlerts:    {overlay:'capAlerts',   product:'ecmwf'},
+    alerts:       {overlay:'capAlerts',   product:'ecmwf'}
+  };
+  const cfg = layerCfg[l] || layerCfg['wind'];
+  const overlay = cfg.overlay;
+  const product = cfg.product;
+  const level = altLevel || 'surface';
+  return `https://embed.windy.com/embed2.html?lat=${a}&lon=${o}&detailLat=${a}&detailLon=${o}&width=860&height=345&zoom=8&level=${level}&overlay=${overlay}&product=${product}&menu=&message=true&marker=true&calendar=now&pressure=true&type=map&location=coordinates&detail=&metricWind=km%2Fh&metricTemp=%C2%B0C&radarRange=-1`;
+}
+function loadMap(){
+  const url=wURL(lat,lon,lyr);
+  document.querySelectorAll('#WINDY').forEach(fr=>fr.src=url);
+  clog(`map:${lat.toFixed(2)},${lon.toFixed(2)},${lyr}`,'ok');
+}
+function setLy(l,btn,fromModal){
+  lyr=l;
+  document.querySelectorAll('.mlb').forEach(b=>b.classList.remove('on'));
+  if(btn){btn.classList.add('on');}
+  else{
+    // map layer key → button id
+    const m={wind:'MLB_W',rain:'MLB_R',temp:'MLB_T',clouds:'MLB_C',
+             radar:'MLB_RD',satellite:'MLB_ST',gust:'MLB_GS',
+             accumulation:'MLB_AC',waves:'MLB_WV',pressure:'MLB_PR'};
+    const e=$(m[l]);if(e)e.classList.add('on');
+  }
+  loadMap();
+  if(fromModal) scrMap();
+}
+function scrMap(){$('MAPSEC').scrollIntoView({behavior:'smooth',block:'start'})}
+function togFS(){
+  if(!document.fullscreenElement)($('MAPSEC').requestFullscreen ? $('MAPSEC').requestFullscreen() : null);
+  else (document.exitFullscreen ? document.exitFullscreen() : null);
+}
+
+// ══════════════════════════════════════════
+// AUTOCOMPLETE
+// ══════════════════════════════════════════
+async function onAC(q){
+  clearTimeout(acT);const dr=$('ACDR');
+  if(q.length<2){dr.classList.remove('open');return;}
+  if(!KEY){dr.classList.remove('open');return;}
+  acT=setTimeout(async()=>{
+    try{
+      const r=await fetch(`https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(q)}&limit=5&appid=${KEY}`);
+      acList=await r.json();
+      if(!acList.length){dr.classList.remove('open');return;}
+      dr.innerHTML=acList.map((it,i)=>`<div class="acit" onclick="pickAC(${i})"><i class="fas fa-location-dot"></i><span>${(it.local_names && it.local_names[lang] ? it.local_names[lang] : it.name)}${it.state?', '+it.state:''}, ${it.country}</span></div>`).join('');
+      dr.classList.add('open');
+    }catch(e){clog('AC:'+e.message,'err');}
+  },350);
+}
+function pickAC(i){
+  const it=acList[i];lat=it.lat;lon=it.lon;
+  $('SINP').value=(it.local_names && it.local_names[lang] ? it.local_names[lang] : it.name);
+  $('ACDR').classList.remove('open');
+  loadByC(lat,lon,(it.local_names && it.local_names[lang] ? it.local_names[lang] : it.name));
+}
+function onSK(e){if(e.key==='Enter'){$('ACDR').classList.remove('open');doSrch();}if(e.key==='Escape')$('ACDR').classList.remove('open');}
+document.addEventListener('click',e=>{if(!$('SROW').contains(e.target))$('ACDR').classList.remove('open');});
+function doSrch(){const q=$('SINP').value.trim();if(q){loadW(q);$('ACDR').classList.remove('open');}}
+
+// ══════════════════════════════════════════
+// GPS — دقة عالية
+// ══════════════════════════════════════════
+function getGPS(){
+  if(!navigator.geolocation){clog('GPS not supported','err');alert('المتصفح لا يدعم GPS');return;}
+  clog('requesting GPS (high accuracy)...','info');
+  const btn=$('IBGPS');
+  btn.style.color='var(--c)';
+  btn.style.animation='blink 1s ease-in-out infinite';
+  // نطلب الإذن صراحةً أولاً إن أمكن
+  if(navigator.permissions){
+    navigator.permissions.query({name:'geolocation'}).then(result=>{
+      clog('GPS permission: '+result.state,'info');
+    }).catch(()=>{});
+  }
+  navigator.geolocation.getCurrentPosition(
+    p=>{
+      lat=p.coords.latitude;
+      lon=p.coords.longitude;
+      clog(`GPS OK: ${lat.toFixed(4)}, ${lon.toFixed(4)} (±${Math.round(p.coords.accuracy)}m)`,'ok');
+      btn.style.color='var(--g)';
+      btn.style.animation='';
+      loadByC(lat,lon);
+    },
+    e=>{
+      let msg='خطأ GPS';
+      if(e.code===1) msg='تم رفض إذن الموقع — يرجى السماح من إعدادات المتصفح';
+      else if(e.code===2) msg='الموقع غير متاح — تحقق من إعدادات الجهاز';
+      else if(e.code===3) msg='انتهت مهلة GPS — حاول مجدداً';
+      clog('GPS: '+msg,'err');
+      btn.style.color='var(--r)';
+      btn.style.animation='';
+      setTimeout(()=>{btn.style.color='';},2000);
+      alert(msg);
+    },
+    {enableHighAccuracy:true, timeout:15000, maximumAge:0}
+  );
+}
+
+// ══════════════════════════════════════════
+// FAVORITES
+// ══════════════════════════════════════════
+function rndrFavs(){
+  const r=$('FAVROW');if(!favs.length){r.style.display='none';return;}
+  r.style.display='flex';
+  r.innerHTML=favs.map((f,i)=>`<div class="fchip" onclick="ldFav(${i})"><i class="fas fa-star"></i>${f.city}<span class="frm" onclick="rmFav(event,${i})">✕</span></div>`).join('');
+}
+function togFav(){
+  if(!WD)return;
+  const idx=favs.findIndex(f=>f.city===WD.city);
+  if(idx>=0){favs.splice(idx,1);clog(`rm fav:${WD.city}`,'warn');}
+  else{favs.push({city:WD.city,lat,lon});clog(`add fav:${WD.city}`,'ok');}
+  localStorage.setItem('ax_favs',JSON.stringify(favs));
+  updFavBtn();rndrFavs();
+}
+function rmFav(e,i){e.stopPropagation();favs.splice(i,1);localStorage.setItem('ax_favs',JSON.stringify(favs));rndrFavs();}
+function ldFav(i){const f=favs[i];lat=f.lat;lon=f.lon;loadW(f.city);}
+function updFavBtn(){if(!WD)return;$('FAVBTN').classList.toggle('on',favs.some(f=>f.city===WD.city));}
+
+// ══════════════════════════════════════════
+// API KEY
+// ══════════════════════════════════════════
+function updKey(){
+  const has=!!KEY;
+  const dot=$('KDOT');dot.className='kd'+(has?' on':'');
+  $('BDG_D').style.display=has?'none':'flex';
+  $('BDG_K').style.display=has?'flex':'none';
+  $('KST').className='ast '+(has?'ok':'no');
+  set('TT_KS',KEY?TR[lang].kok:TR[lang].kno);
+}
+function saveKey(){
+  const v=$('KINP').value.trim();if(!v)return;
+  KEY=v;localStorage.setItem('ax_key',v);
+  updKey();cOv('OV_K');clog('key saved','ok');
+  loadW((WD && WD.city ? WD.city : 'Damascus'));
+}
+function delKey(){
+  KEY='';localStorage.removeItem('ax_key');$('KINP').value='';
+  updKey();cOv('OV_K');clog('key removed','warn');loadW('Damascus');
+}
+
+// ══════════════════════════════════════════
+// OVERLAYS
+// ══════════════════════════════════════════
+function oOv(id){
+  if(id==='OV_K'){$('KINP').value=KEY||'';updKey();}
+  $(id).classList.add('show');
+}
+function cOv(id){$(id).classList.remove('show')}
+document.querySelectorAll('.ovlay').forEach(o=>o.addEventListener('click',function(e){if(e.target===this)this.classList.remove('show');}));
+
+// ══════════════════════════════════════════
+// UV LABEL
+// ══════════════════════════════════════════
+function uvLab(v){const a=TR[lang].uvls;if(v<=2)return a[0];if(v<=5)return a[1];if(v<=7)return a[2];if(v<=10)return a[3];return a[4];}
+
+// ══════════════════════════════════════════
+// RENDER (مع المؤشرات الجديدة)
+// ══════════════════════════════════════════
+function render(d){
+  WD=d;const L=TR[lang];const tod=new Date().getDay();
+  set('CITY',d.city.toUpperCase());
+  $('TEMP').innerHTML=`${d.temp}<sup>°</sup>`;
+  set('TLO',d.low+'°');set('THI',d.high+'°');
+  set('FEELS',`${L.feels} ${d.feels}°`);
+  set('CICO',ICO[d.condition]||'🌤️');
+  set('CTAG',(L.cond[d.condition]||d.condition).toUpperCase());
+  set('SH',d.humidity);set('SW',d.wind);set('SV',d.visibility);set('SP',d.pressure);
+  const uv=d.uv||4;set('UVV',uv);set('UVL',uvLab(uv));
+  $('UVBAR').style.width=Math.min(uv/11*100,100)+'%';
+  set('SRISE',d.sunrise||'06:21');set('SSET',d.sunset||'17:48');
+  // المؤشرات الجديدة
+  set('DUST',d.dust||15);
+  set('POLLEN',d.pollen||45);
+  set('DEW',`الندى: ${d.dew||2}°C`);
+  set('AQIV',d.aqi||25);
+  set('PM25',d.pm25||12);
+  set('PM10',d.pm10||25);
+  set('O3V',d.o3||38);
+  let aqiClass='ag', aqiLabel=L.ag;
+  const aqi=d.aqi||25;
+  if(aqi>150){aqiClass='ap';aqiLabel=L.ap;}
+  else if(aqi>50){aqiClass='am';aqiLabel=L.am;}
+  $('AQIB').className=`aqib ${aqiClass}`;
+  set('AQIB',aqiLabel);
+  $('AQIF').style.width=Math.min((aqi/200)*100,100)+'%';
+
+  $('HOURLY').innerHTML=d.hourly.map((h,i)=>`<div class="hc ${i===0?'now':''}"><div class="ht">${i===0?L.now:h.t}</div><div class="hi">${ICO[h.c]||'🌤️'}</div><div class="hv">${h.v}°</div></div>`).join('');
+  $('WEEKLY').innerHTML=d.forecast.map((f,i)=>`<div class="dc"><div class="dn">${L.days[(tod+i)%7]}</div><div class="di">${ICO[f.c]||'🌤️'}</div><div class="dh">${f.h}°</div><div class="dl">${f.l}°</div></div>`).join('');
+  updFavBtn();
+}
+
+// ══════════════════════════════════════════
+// FETCH (مع تحسين DEMO)
+// ══════════════════════════════════════════
+function showLoad(v){$('LOAD').classList.toggle('gone',!v)}
+
+async function loadW(city){
+  showLoad(true);clog(`fetch:${city}`,'info');
+  if(!KEY){
+    await new Promise(r=>setTimeout(r,750));
+    const hash = city.split('').reduce((a,c)=>a + c.charCodeAt(0), 0);
+    const newLat = 30 + (hash % 20);
+    const newLon = 10 + (hash % 30);
+    lat = newLat; lon = newLon;
+    const demoData = { ...DEMO_TEMPLATE, city: city };
+    render(demoData);
+    loadMap();
+    showLoad(false);
+    clog(`demo:${city} (simulated)`,'warn');
+    return;
+  }
+  try{
+    const gr=await fetch(`https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(city)}&limit=1&appid=${KEY}`);
+    const geo=await gr.json();if(geo.length){lat=geo[0].lat;lon=geo[0].lon;}
+    const[wr,fr,air]=await Promise.all([
+      fetch(`https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${KEY}&units=metric`),
+      fetch(`https://api.openweathermap.org/data/2.5/forecast?q=${encodeURIComponent(city)}&appid=${KEY}&units=metric&cnt=40`),
+      fetch(`https://api.openweathermap.org/data/2.5/air_pollution?lat=${lat}&lon=${lon}&appid=${KEY}`)
+    ]);
+    if(!wr.ok)throw new Error('not found');
+    const w=await wr.json(),f=await fr.json(), a=await air.json();
+    lat=w.coord.lat;lon=w.coord.lon;
+    // محاكاة بيانات إضافية (الغبار، الندى، غبار الطلع) – يمكن استبدالها ببيانات حقيقية إذا توفرت
+    const dust = (a.list&&a.list[0]&&a.list[0].components&&a.list[0].components.pm10 ? a.list[0].components.pm10 + 5 : 20);
+    const pollen = (a.list&&a.list[0]&&a.list[0].components&&a.list[0].components.pm2_5 ? a.list[0].components.pm2_5 + 10 : 30);
+    const dew = w.main.temp - ((100 - w.main.humidity)/5); // تقريب بسيط
+    const aqi = (a.list&&a.list[0]&&a.list[0].main&&a.list[0].main.aqi ? a.list[0].main.aqi * 20 : 25); // تحويل aqi من 1-5 إلى 0-100
+    await procD(w,f,{dust, pollen, dew, aqi, pm25: (a.list&&a.list[0]&&a.list[0].components ? a.list[0].components.pm2_5||12 : 12), pm10: (a.list&&a.list[0]&&a.list[0].components ? a.list[0].components.pm10||25 : 25), o3: (a.list&&a.list[0]&&a.list[0].components ? a.list[0].components.o3||38 : 38)});
+  }catch(e){clog('err:'+e.message,'err');alert(TR[lang].nf);render({...DEMO_TEMPLATE, city: city});loadMap();}
+  finally{showLoad(false);}
+}
+async function loadByC(a,o,nm){
+  showLoad(true);
+  if(!KEY){await new Promise(r=>setTimeout(r,700));render({...DEMO_TEMPLATE, city:nm||'Location'});loadMap();showLoad(false);return;}
+  try{
+    const[wr,fr,air]=await Promise.all([
+      fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${a}&lon=${o}&appid=${KEY}&units=metric`),
+      fetch(`https://api.openweathermap.org/data/2.5/forecast?lat=${a}&lon=${o}&appid=${KEY}&units=metric&cnt=40`),
+      fetch(`https://api.openweathermap.org/data/2.5/air_pollution?lat=${a}&lon=${o}&appid=${KEY}`)
+    ]);
+    if(!wr.ok)throw new Error('err');
+    const w=await wr.json(),f=await fr.json(), aq=await air.json();
+    const dust = (aq.list&&aq.list[0]&&aq.list[0].components&&aq.list[0].components.pm10 ? aq.list[0].components.pm10 + 5 : 20);
+    const pollen = (aq.list&&aq.list[0]&&aq.list[0].components&&aq.list[0].components.pm2_5 ? aq.list[0].components.pm2_5 + 10 : 30);
+    const dew = w.main.temp - ((100 - w.main.humidity)/5);
+    const aqi = (aq.list&&aq.list[0]&&aq.list[0].main&&aq.list[0].main.aqi ? aq.list[0].main.aqi * 20 : 25);
+    await procD(w,f,{dust, pollen, dew, aqi, pm25: (aq.list&&aq.list[0]&&aq.list[0].components ? aq.list[0].components.pm2_5||12 : 12), pm10: (aq.list&&aq.list[0]&&aq.list[0].components ? aq.list[0].components.pm10||25 : 25), o3: (aq.list&&aq.list[0]&&aq.list[0].components ? aq.list[0].components.o3||38 : 38)});
+  }catch(e){clog('coords:'+e.message,'err');render({...DEMO_TEMPLATE, city:nm||'Location'});loadMap();}
+  finally{showLoad(false);}
+}
+// ══════════════════════════════════════════
+// OPEN-METEO — 15-day forecast (free, no key)
+// ══════════════════════════════════════════
+const OM_WMO={0:'Clear',1:'Clear',2:'Clouds',3:'Clouds',
+  45:'Mist',48:'Mist',
+  51:'Drizzle',53:'Drizzle',55:'Drizzle',
+  61:'Rain',63:'Rain',65:'Rain',
+  71:'Snow',73:'Snow',75:'Snow',77:'Snow',
+  80:'Rain',81:'Rain',82:'Rain',
+  85:'Snow',86:'Snow',
+  95:'Thunderstorm',96:'Thunderstorm',99:'Thunderstorm'};
+
+async function fetch15Day(lt,lo){
+  try{
+    const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lt}&longitude=${lo}&daily=weathercode,temperature_2m_max,temperature_2m_min&forecast_days=15&timezone=auto`);
+    if(!r.ok)return null;
+    const d=await r.json();
+    return d.daily.time.map((t,i)=>({
+      h:Math.round(d.daily.temperature_2m_max[i]),
+      l:Math.round(d.daily.temperature_2m_min[i]),
+      c:OM_WMO[d.daily.weathercode[i]]||'Clouds'
+    }));
+  }catch(e){clog('open-meteo:'+e.message,'warn');return null;}
+}
+
+async function procD(w,f,extra){
+  // hourly من OpenWeatherMap (دقيق وحي)
+  const hourly=f.list.slice(0,7).map((it,i)=>({t:i===0?'now':new Date(it.dt*1000).getHours()+':00',v:Math.round(it.main.temp),c:it.weather[0].main}));
+  const sr=new Date(w.sys.sunrise*1000),ss=new Date(w.sys.sunset*1000);
+  const fmt=d=>`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+
+  // جلب 15 يوم من Open-Meteo بالتوازي
+  const forecast15 = await fetch15Day(w.coord.lat, w.coord.lon);
+
+  // إن فشل Open-Meteo نرجع لـ OWM (5 أيام)
+  let forecast;
+  if(forecast15 && forecast15.length>=5){
+    forecast = forecast15;
+    clog(`open-meteo:${forecast15.length} days`,'ok');
+  } else {
+    const days={};
+    f.list.forEach(it=>{const d=new Date(it.dt*1000).getDay();if(!days[d])days[d]={t:[],c:it.weather[0].main};days[d].t.push(it.main.temp);});
+    forecast=Object.entries(days).map(([,v])=>({h:Math.round(Math.max(...v.t)),l:Math.round(Math.min(...v.t)),c:v.c}));
+    clog('forecast: using OWM fallback','warn');
+  }
+
+  render({
+    city:w.name,
+    temp:Math.round(w.main.temp),
+    feels:Math.round(w.main.feels_like),
+    low:Math.round(w.main.temp_min),
+    high:Math.round(w.main.temp_max),
+    humidity:w.main.humidity,
+    wind:Math.round(w.wind.speed*3.6),
+    visibility:Math.round((w.visibility||10000)/1000),
+    pressure:w.main.pressure,
+    condition:w.weather[0].main,
+    uv:5,
+    sunrise:fmt(sr),
+    sunset:fmt(ss),
+    forecast,
+    hourly,
+    dust:extra.dust,
+    pollen:extra.pollen,
+    dew:Math.round(extra.dew),
+    aqi:extra.aqi,
+    pm25:extra.pm25,
+    pm10:extra.pm10,
+    o3:extra.o3
+  });
+  loadMap();clog(`ok:${w.name} ${Math.round(w.main.temp)}°C`,'ok');
+}
+
+// ══════════════════════════════════════════
+// SHARE DROPDOWN
+// ══════════════════════════════════════════
+function toggleShareDropdown() {
+  const dd = $('shareDropdown');
+  const btn = $('IBSHARE');
+  if(!dd || !btn) return;
+  const isOpen = dd.classList.contains('show');
+  // اغلاق كل القوائم أولاً
+  dd.classList.remove('show');
+  if(isOpen) return;
+  // حساب موضع الزر وفتح القائمة تحته
+  const rect = btn.getBoundingClientRect();
+  const isRTL = document.documentElement.dir === 'rtl';
+  dd.style.top = (rect.bottom + 6) + 'px';
+  if(isRTL){
+    dd.style.right = (window.innerWidth - rect.right) + 'px';
+    dd.style.left = 'auto';
+  } else {
+    dd.style.left = rect.left + 'px';
+    dd.style.right = 'auto';
+  }
+  dd.classList.add('show');
+  // إغلاق عند النقر خارجها
+  setTimeout(()=>{
+    const close = (e)=>{
+      if(!dd.contains(e.target) && e.target.id !== 'IBSHARE'){
+        dd.classList.remove('show');
+        document.removeEventListener('click', close);
+      }
+    };
+    document.addEventListener('click', close);
+  }, 0);
+}
+
+function shareAction(type) {
+  const pageUrl = window.location.href;
+  const city = WD ? WD.city : '';
+  const shareText = 'AERO-X Weather' + (city ? ' — ' + city : '') + ' | تطبيق طقس مستقبلي';
+  const url = encodeURIComponent(pageUrl);
+  const text = encodeURIComponent(shareText);
+  let targetUrl = '';
+  switch(type) {
+    case 'native':
+      // Web Share API (موبايل)
+      if(navigator.share){
+        navigator.share({title:'AERO-X Weather',text:shareText,url:pageUrl})
+          .then(()=>clog('shared','ok'))
+          .catch(()=>clog('share cancelled','warn'));
+      } else {
+        copyToClipboard(pageUrl);
+      }
+      break;
+    case 'copy':
+      copyToClipboard(pageUrl);
+      break;
+    case 'twitter':
+      targetUrl = 'https://twitter.com/intent/tweet?url='+url+'&text='+text;
+      window.open(targetUrl, '_blank');
+      break;
+    case 'facebook':
+      targetUrl = 'https://www.facebook.com/sharer/sharer.php?u='+url;
+      window.open(targetUrl, '_blank');
+      break;
+    case 'whatsapp':
+      targetUrl = 'https://wa.me/?text='+text+'%20'+url;
+      window.open(targetUrl, '_blank');
+      break;
+    case 'email':
+      targetUrl = 'mailto:?subject=AERO-X%20Weather&body='+text+'%20'+url;
+      window.location.href = targetUrl;
+      break;
+  }
+  .classList.remove('show');
+}
+
+function copyToClipboard(txt){
+  if(navigator.clipboard && window.isSecureContext){
+    navigator.clipboard.writeText(txt).then(()=>{
+      clog('تم نسخ الرابط','ok');
+      showCopyToast();
+    }).catch(()=>fallbackCopy(txt));
+  } else {
+    fallbackCopy(txt);
+  }
+}
+function fallbackCopy(txt){
+  const ta = document.createElement('textarea');
+  ta.value = txt; ta.style.position='fixed'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.focus(); ta.select();
+  try{ document.execCommand('copy'); clog('تم نسخ الرابط','ok'); showCopyToast(); }
+  catch(e){ clog('فشل النسخ','err'); }
+  document.body.removeChild(ta);
+}
+function showCopyToast(){
+  let t = document.getElementById('COPY_TOAST');
+  if(!t){
+    t = document.createElement('div');
+    t.id='COPY_TOAST';
+    t.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(0,229,255,.15);border:1px solid var(--c);color:var(--c);padding:10px 22px;border-radius:100px;font-family:Cairo,sans-serif;font-size:13px;z-index:9999;transition:opacity .4s;pointer-events:none;box-shadow:0 0 20px rgba(0,229,255,.2)';
+    document.body.appendChild(t);
+  }
+  t.textContent = '✓ ' + (lang==='ar'?'تم نسخ الرابط':'Link copied!');
+  t.style.opacity='1';
+  setTimeout(()=>{ t.style.opacity='0'; }, 2000);
+}
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>AERO-X Weather</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@300;400;700;900&family=Cairo:wght@300;400;600;700&family=DM+Mono:wght@300;400&family=Dancing+Script:wght@700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+<style>
+/* ═══════════════════════════════════════════
+   VARIABLES
+═══════════════════════════════════════════ */
+:root{
+  --bg:  #050810;
+  --bg2: #080d1a;
+  --bg3: #0c1222;
+
+  --c:   #00e5ff;
+  --cA:  rgba(0,229,255,.15);
+  --cB:  rgba(0,229,255,.08);
+  --cC:  rgba(0,229,255,.22);
+
+  --g:   #39ff14;
+  --gA:  rgba(57,255,20,.12);
+
+  --v:   #a855f7;
+  --a:   #ffb700;
+  --r:   #ff3e5f;
+
+  --t1:  rgba(232,240,255,.92);
+  --t2:  rgba(232,240,255,.50);
+  --t3:  rgba(232,240,255,.22);
+  --t4:  rgba(232,240,255,.08);
+
+  /* Glass panels — NO backdrop-filter needed */
+  --panel:  rgba(8,13,26,.82);
+  --panel2: rgba(10,16,30,.75);
+  --panelH: rgba(8,13,26,.90);
+
+  --line:  rgba(0,229,255,.10);
+  --line2: rgba(232,240,255,.08);
+  --line3: rgba(232,240,255,.13);
+
+  --rad: 16px;
+  --rad2: 22px;
+}
+
+/* ═══════════════════════════════════════════
+   RESET + BASE
+═══════════════════════════════════════════ */
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--t1);
+  font-family:'Cairo',sans-serif;
+  min-height:100vh;
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+  position:relative;
+}
+
+/* ═══════════════════════════════════════════
+   BACKGROUND LAYERS
+═══════════════════════════════════════════ */
+/* Layer 1 — depth gradient (CSS only, no canvas) */
+body::before{
+  content:'';
+  position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(ellipse 100% 70% at 15% 5%,  rgba(0,60,150,.20) 0%,transparent 55%),
+    radial-gradient(ellipse 80%  60% at 88% 92%,  rgba(57,255,20,.07) 0%,transparent 55%),
+    radial-gradient(ellipse 60%  50% at 50% 50%,  rgba(0,229,255,.04) 0%,transparent 65%),
+    linear-gradient(170deg,#04060f 0%,#060912 50%,#050810 100%);
+}
+
+/* Layer 2 — radar grid */
+body::after{
+  content:'';
+  position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:
+    linear-gradient(rgba(0,229,255,.030) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,229,255,.030) 1px,transparent 1px);
+  background-size:50px 50px;
+}
+
+/* Orbs */
+.orb{
+  position:fixed;border-radius:50%;pointer-events:none;z-index:0;
+  animation:orbf ease-in-out infinite;
+}
+.o1{width:550px;height:550px;top:-220px;left:-180px;
+    background:radial-gradient(circle,rgba(0,80,200,.13) 0%,transparent 70%);
+    animation-duration:14s}
+.o2{width:400px;height:400px;bottom:-80px;right:-130px;
+    background:radial-gradient(circle,rgba(57,255,20,.07) 0%,transparent 70%);
+    animation-duration:18s}
+.o3{width:300px;height:300px;top:38%;left:35%;
+    background:radial-gradient(circle,rgba(0,229,255,.05) 0%,transparent 70%);
+    animation-duration:22s}
+@keyframes orbf{
+  0%,100%{transform:scale(1) translate(0,0)}
+  35%{transform:scale(1.12) translate(18px,-14px)}
+  70%{transform:scale(.9) translate(-12px,16px)}
+}
+
+/* Rain canvas — drawn with JS */
+#RAIN{position:fixed;inset:0;z-index:1;pointer-events:none}
+
+/* CRT scanlines */
+#SCAN{
+  position:fixed;inset:0;z-index:2;pointer-events:none;
+  background:repeating-linear-gradient(
+    0deg,transparent,transparent 3px,
+    rgba(0,0,0,.025) 3px,rgba(0,0,0,.025) 4px
+  );
+}
+
+/* ═══════════════════════════════════════════
+   MAIN LAYOUT
+═══════════════════════════════════════════ */
+.app{
+  position:relative;z-index:3;
+  max-width:860px;margin:0 auto;
+  padding:12px 12px 90px;
+}
+
+/* ═══════════════════════════════════════════
+   GLASS CARD MIXIN — works on file:// + mobile
+═══════════════════════════════════════════ */
+.gc{
+  background:var(--panel);
+  border:1px solid var(--line2);
+  border-radius:var(--rad2);
+  position:relative;overflow:hidden;
+}
+/* top cyan accent line */
+.gc::before{
+  content:'';position:absolute;
+  top:0;left:8%;right:8%;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(0,229,255,.18),transparent);
+  pointer-events:none;
+}
+
+/* ═══════════════════════════════════════════
+   TOPBAR
+═══════════════════════════════════════════ */
+.topbar{
+  display:flex;align-items:center;gap:8px;
+  margin-bottom:11px;flex-wrap:wrap;
+  position:relative;
+}
+.logo{
+  font-family:'Orbitron',sans-serif;font-size:20px;font-weight:900;
+  letter-spacing:5px;color:var(--t1);flex-shrink:0;user-select:none;
+  text-shadow:0 0 28px rgba(0,229,255,.28);
+}
+.logo em{color:var(--c);font-style:normal;
+  text-shadow:0 0 12px var(--c),0 0 28px rgba(0,229,255,.35)}
+/* التوقيع: اسم NIDAL WATFA بخط Cairo ثابت بدون نبض أو هالات */
+.sig{
+  font-family:'Cairo',sans-serif;
+  font-weight:700;font-size:13.5px;
+  color: var(--c); /* لون ثابت */
+  letter-spacing: 0.5px;
+  flex-shrink:0;
+}
+.livepill{
+  display:flex;align-items:center;gap:5px;
+  background:rgba(57,255,20,.07);
+  border:1px solid rgba(57,255,20,.22);
+  border-radius:100px;padding:3px 9px;
+  font-family:'DM Mono',monospace;font-size:9px;
+  color:var(--g);letter-spacing:1.2px;flex-shrink:0;
+}
+.ldot{
+  width:6px;height:6px;border-radius:50%;
+  background:var(--g);box-shadow:0 0 5px var(--g);
+  animation:blink 2s ease-in-out infinite;
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.sp{flex:1}
+.langsel{
+  appearance:none;-webkit-appearance:none;
+  background:var(--panel);border:1px solid var(--line3);
+  border-radius:10px;padding:7px 28px 7px 10px;
+  color:var(--t2);font-family:'DM Mono',monospace;font-size:11px;
+  cursor:pointer;outline:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='rgba(0,229,255,.5)'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 9px center;
+  transition:border-color .2s,color .2s;
+}
+[dir=ltr] .langsel{padding:7px 10px 7px 28px;background-position:left 9px center}
+.langsel:hover{border-color:var(--c);color:var(--t1)}
+
+/* ═══════════════════════════════════════════
+   ICON BUTTONS — real <button> for mobile
+═══════════════════════════════════════════ */
+.btns{display:flex;gap:6px}
+.ib{
+  /* REAL BUTTON TAG — handles touch/click on all mobile browsers */
+  width:38px;height:38px;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--panel);
+  border:1px solid var(--line3);
+  border-radius:10px;
+  color:var(--t2);font-size:14px;
+  cursor:pointer;
+  /* smooth transitions */
+  transition:background .18s,border-color .18s,color .18s,box-shadow .18s;
+  -webkit-tap-highlight-color:transparent;
+  position:relative;flex-shrink:0;
+  /* NO clip-path — was breaking clicks */
+}
+.ib:hover,.ib:focus,.ib:active{
+  background:var(--cA);
+  border-color:var(--c);
+  color:var(--c);
+  box-shadow:0 0 16px rgba(0,229,255,.22),inset 0 0 8px rgba(0,229,255,.07);
+  outline:none;
+}
+/* key dot indicator */
+.ib .kd{
+  position:absolute;top:5px;right:5px;
+  width:7px;height:7px;border-radius:50%;
+  background:var(--a);box-shadow:0 0 5px var(--a);
+  pointer-events:none;
+}
+.ib .kd.on{background:var(--g);box-shadow:0 0 5px var(--g)}
+
+/* ═══════════════════════════════════════════
+   SEARCH ROW
+═══════════════════════════════════════════ */
+.srow{display:flex;gap:9px;margin-bottom:10px;position:relative}
+.swrap{flex:1;position:relative}
+.sinp{
+  width:100%;background:var(--panel2);
+  border:1px solid var(--line3);border-radius:var(--rad);
+  padding:12px 46px 12px 14px;
+  color:var(--t1);font-family:'Cairo',sans-serif;font-size:14px;
+  outline:none;
+  transition:border-color .25s,box-shadow .25s;
+}
+[dir=ltr] .sinp{padding:12px 14px 12px 46px}
+.sinp::placeholder{color:var(--t3)}
+.sinp:focus{
+  border-color:var(--c);
+  box-shadow:0 0 0 2px rgba(0,229,255,.1),0 0 20px rgba(0,229,255,.07);
+}
+.sbtn{
+  position:absolute;top:50%;transform:translateY(-50%);
+  background:none;border:none;color:var(--t3);
+  cursor:pointer;font-size:14px;padding:10px;
+  transition:color .18s;-webkit-tap-highlight-color:transparent;
+}
+[dir=rtl] .sbtn{left:7px}[dir=ltr] .sbtn{right:7px}
+.sbtn:hover{color:var(--c)}
+
+/* Global view button */
+.gbtn{
+  background:rgba(57,255,20,.09);
+  border:1px solid rgba(57,255,20,.38);
+  border-radius:var(--rad);padding:12px 17px;
+  color:var(--g);font-family:'Cairo',sans-serif;
+  font-size:13px;font-weight:700;
+  cursor:pointer;white-space:nowrap;flex-shrink:0;
+  display:flex;align-items:center;gap:6px;
+  transition:all .2s;-webkit-tap-highlight-color:transparent;
+  text-shadow:0 0 8px rgba(57,255,20,.4);
+  box-shadow:0 0 14px rgba(57,255,20,.1);
+}
+.gbtn:hover,.gbtn:active{
+  background:rgba(57,255,20,.17);
+  box-shadow:0 0 24px rgba(57,255,20,.25);
+  transform:translateY(-1px);
+}
+
+/* autocomplete */
+.acdrop{
+  position:absolute;top:calc(100% + 5px);left:0;right:0;
+  background:#0c1424;border:1px solid var(--cC);
+  border-radius:var(--rad);z-index:60;
+  display:none;overflow:hidden;
+  box-shadow:0 12px 40px rgba(0,0,0,.65);
+}
+.acdrop.open{display:block}
+.acit{
+  padding:11px 14px;font-size:13px;color:var(--t2);
+  cursor:pointer;display:flex;align-items:center;gap:9px;
+  border-bottom:1px solid var(--line2);transition:background .12s;
+}
+.acit:last-child{border:none}
+.acit:hover,.acit:active{background:var(--cA);color:var(--c)}
+.acit i{color:var(--c);font-size:11px;flex-shrink:0}
+
+/* ═══════════════════════════════════════════
+   STATUS BADGES
+═══════════════════════════════════════════ */
+.bdg{
+  border-radius:12px;padding:8px 13px;font-size:12px;
+  margin-bottom:10px;display:flex;align-items:center;gap:8px;
+}
+.bdgW{background:rgba(255,183,0,.08);border:1px solid rgba(255,183,0,.22);color:var(--a)}
+.bdgG{background:rgba(57,255,20,.07);border:1px solid rgba(57,255,20,.22);color:var(--g);display:none}
+
+/* ═══════════════════════════════════════════
+   FAVORITES
+═══════════════════════════════════════════ */
+.favrow{
+  display:flex;gap:7px;overflow-x:auto;padding-bottom:2px;
+  margin-bottom:10px;scrollbar-width:none;
+}
+.favrow::-webkit-scrollbar{display:none}
+.fchip{
+  flex:0 0 auto;background:var(--panel2);
+  border:1px solid var(--line3);border-radius:100px;
+  padding:6px 12px;font-size:12px;color:var(--t2);
+  cursor:pointer;display:flex;align-items:center;gap:6px;
+  white-space:nowrap;transition:all .18s;
+  -webkit-tap-highlight-color:transparent;
+}
+.fchip:hover{border-color:var(--a);color:var(--a)}
+.fchip i{color:var(--a);font-size:10px}
+.frm{color:var(--t3);font-size:10px;transition:color .15s}
+.fchip:hover .frm{color:var(--r)}
+
+/* ═══════════════════════════════════════════
+   HERO CARD
+═══════════════════════════════════════════ */
+.hero{
+  background:linear-gradient(140deg,rgba(0,229,255,.06) 0%,var(--panel) 45%,rgba(57,255,20,.03) 100%);
+  border:1px solid var(--cC);
+  border-radius:var(--rad2);
+  padding:22px;margin-bottom:10px;
+  position:relative;overflow:hidden;
+  box-shadow:0 0 50px rgba(0,229,255,.06),0 12px 40px rgba(0,0,0,.45);
+}
+/* glowing top edge */
+.hero::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent 0%,var(--c) 50%,transparent 100%);
+  opacity:.45;pointer-events:none;
+}
+/* corner glow */
+.hero::after{
+  content:'';position:absolute;bottom:-30px;right:-30px;
+  width:160px;height:160px;border-radius:50%;
+  background:radial-gradient(circle,rgba(0,229,255,.07) 0%,transparent 70%);
+  pointer-events:none;
+}
+.herotop{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px;gap:8px;flex-wrap:wrap}
+.cpill{
+  display:inline-flex;align-items:center;gap:6px;
+  background:rgba(0,229,255,.08);border:1px solid rgba(0,229,255,.25);
+  border-radius:6px;padding:5px 12px;
+  font-family:'Orbitron',sans-serif;font-size:10px;
+  letter-spacing:2.5px;color:var(--c);
+  text-shadow:0 0 8px rgba(0,229,255,.35);
+}
+.cpill i{font-size:9px}
+.favbtn{
+  background:none;border:none;color:var(--t3);
+  cursor:pointer;font-size:17px;padding:4px;
+  transition:color .2s,text-shadow .2s;
+  -webkit-tap-highlight-color:transparent;
+}
+.favbtn:hover,.favbtn.on{color:var(--a);text-shadow:0 0 8px rgba(255,183,0,.5)}
+
+/* temp — ultra thin weight */
+.temp{
+  font-family:'Orbitron',sans-serif;
+  font-size:clamp(62px,17vw,108px);
+  font-weight:300;
+  color:var(--t1);line-height:1;
+  text-shadow:0 0 35px rgba(0,229,255,.18),0 0 70px rgba(0,229,255,.07);
+  letter-spacing:-3px;
+}
+.temp sup{font-size:.32em;opacity:.38;vertical-align:super;font-weight:300}
+.trange{display:flex;align-items:center;gap:13px;margin:6px 0 5px}
+.tlo{color:var(--c);font-size:15px;font-weight:600;display:flex;align-items:center;gap:4px}
+.thi{color:#ff7aaa;font-size:15px;font-weight:600;display:flex;align-items:center;gap:4px}
+.feels{font-size:12px;color:var(--t2);display:flex;align-items:center;gap:6px;letter-spacing:.5px}
+.condside{text-align:center;flex-shrink:0}
+.cico{font-size:48px;line-height:1;margin-bottom:8px;filter:drop-shadow(0 0 14px rgba(255,255,255,.12))}
+.ctag{
+  font-family:'DM Mono',monospace;font-size:10px;color:var(--t2);letter-spacing:2px;
+  background:rgba(255,255,255,.05);border:1px solid var(--line3);
+  border-radius:5px;padding:4px 11px;white-space:nowrap;
+}
+
+/* ═══════════════════════════════════════════
+   STATS
+═══════════════════════════════════════════ */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}
+.stat{
+  background:var(--panel2);border:1px solid var(--line2);
+  border-radius:var(--rad);padding:14px 10px;text-align:center;
+  transition:border-color .2s,background .2s;
+  position:relative;overflow:hidden;
+}
+.stat::before{
+  content:'';position:absolute;top:0;left:22%;right:22%;height:1px;
+  background:linear-gradient(90deg,transparent,var(--line3),transparent);
+}
+.stat:hover{border-color:rgba(0,229,255,.22);background:rgba(0,229,255,.05)}
+.sico{font-size:16px;margin-bottom:6px}
+.sv{font-family:'Orbitron',sans-serif;font-size:17px;font-weight:700;color:var(--t1);line-height:1}
+.su{font-size:9px;opacity:.38}
+.sl{font-size:10px;color:var(--t3);margin-top:3px;letter-spacing:.7px}
+
+/* ═══════════════════════════════════════════
+   MAP
+═══════════════════════════════════════════ */
+.mapsec{
+  background:var(--panel);border:1px solid var(--cC);
+  border-radius:var(--rad2);overflow:hidden;margin-bottom:10px;
+  box-shadow:0 0 40px rgba(0,229,255,.07),0 12px 35px rgba(0,0,0,.4);
+}
+.maphdr{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 15px;border-bottom:1px solid var(--line);
+  background:rgba(0,229,255,.028);flex-wrap:wrap;gap:8px;
+}
+.maptit{
+  font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:3px;color:var(--c);
+  display:flex;align-items:center;gap:8px;
+  text-shadow:0 0 8px rgba(0,229,255,.35);
+}
+.maplys{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+/* map layer buttons — real <button> */
+.mlb{
+  background:var(--t4);border:1px solid var(--line2);
+  border-radius:7px;padding:5px 10px;
+  color:var(--t2);font-size:11px;font-family:'Cairo',sans-serif;
+  cursor:pointer;letter-spacing:.4px;
+  transition:all .18s;-webkit-tap-highlight-color:transparent;
+}
+.mlb.on{background:var(--cA);border-color:var(--c);color:var(--c);
+  box-shadow:0 0 9px rgba(0,229,255,.18);text-shadow:0 0 6px rgba(0,229,255,.35)}
+.mlb:hover{border-color:var(--line3);color:var(--t1)}
+.fsb{
+  background:var(--t4);border:1px solid var(--line2);
+  border-radius:7px;width:28px;height:28px;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--t3);cursor:pointer;font-size:11px;
+  transition:all .18s;-webkit-tap-highlight-color:transparent;
+}
+.fsb:hover{border-color:var(--c);color:var(--c)}
+.mapframe{width:100%;height:345px;border:none;display:block;background:#060d18}
+
+/* ═══════════════════════════════════════════
+   SECTION CARD
+═══════════════════════════════════════════ */
+.scard{
+  background:var(--panel2);border:1px solid var(--line2);
+  border-radius:var(--rad2);padding:16px;margin-bottom:10px;
+  position:relative;overflow:hidden;
+}
+.scard::before{
+  content:'';position:absolute;top:0;left:12%;right:12%;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(0,229,255,.1),transparent);
+}
+.shdr{
+  display:flex;align-items:center;gap:8px;margin-bottom:13px;
+  font-family:'Orbitron',sans-serif;font-size:10px;
+  letter-spacing:2.5px;color:var(--t2);text-transform:uppercase;
+}
+.shdr i{color:var(--g);text-shadow:0 0 7px rgba(57,255,20,.4)}
+
+/* ═══════════════════════════════════════════
+   HOURLY
+═══════════════════════════════════════════ */
+.hscroll{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+.hscroll::-webkit-scrollbar{display:none}
+.hc{
+  flex:0 0 auto;background:rgba(255,255,255,.028);
+  border:1px solid var(--line2);border-radius:13px;
+  padding:12px 13px;text-align:center;min-width:68px;
+  transition:border-color .18s;
+}
+.hc.now{background:var(--cA);border-color:var(--c);box-shadow:0 0 16px rgba(0,229,255,.14)}
+.ht{font-size:10px;color:var(--t3);margin-bottom:5px;font-family:'DM Mono',monospace}
+.hi{font-size:16px;margin-bottom:5px}
+.hv{font-family:'Orbitron',sans-serif;font-size:14px;font-weight:700;color:var(--t1)}
+.hc.now .hv{color:var(--c);text-shadow:0 0 7px rgba(0,229,255,.5)}
+
+/* ═══════════════════════════════════════════
+   QUICK GRID
+═══════════════════════════════════════════ */
+.qgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+/* real <button> elements */
+.qc{
+  background:var(--panel2);border:1px solid var(--line2);
+  border-radius:var(--rad2);padding:18px 14px;
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  cursor:pointer;
+  transition:border-color .2s,background .2s,transform .2s,box-shadow .2s;
+  -webkit-tap-highlight-color:transparent;
+  color:inherit;font-family:inherit;
+  position:relative;overflow:hidden;
+  width:100%;
+}
+.qc::before{
+  content:'';position:absolute;top:0;left:20%;right:20%;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(0,229,255,.1),transparent);
+}
+.qc:hover,.qc:active{
+  background:var(--cA);border-color:var(--c);
+  transform:translateY(-2px);
+  box-shadow:0 8px 28px rgba(0,0,0,.3),0 0 20px rgba(0,229,255,.07);
+}
+.qc i{font-size:24px;pointer-events:none}
+.qc span{font-size:12px;color:var(--t2);pointer-events:none;letter-spacing:.4px}
+.q1 i,.q2 i{color:var(--c);text-shadow:0 0 8px rgba(0,229,255,.4)}
+.q3 i{color:#ff8c42;text-shadow:0 0 8px rgba(255,140,66,.32)}
+.q4 i{color:var(--v);text-shadow:0 0 8px rgba(168,85,247,.32)}
+
+/* ═══════════════════════════════════════════
+   EXTRA — UV + SUN (مع إضافة مؤشرات جديدة)
+═══════════════════════════════════════════ */
+.exrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.exc{
+  background:var(--panel2);border:1px solid var(--line2);
+  border-radius:var(--rad2);padding:16px;
+  position:relative;overflow:hidden;
+}
+.exc::before{
+  content:'';position:absolute;top:0;left:18%;right:18%;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(0,229,255,.1),transparent);
+}
+.extit{font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;color:var(--t2);margin-bottom:12px;display:flex;align-items:center;gap:7px}
+.extit i{color:var(--g);text-shadow:0 0 6px rgba(57,255,20,.4)}
+.uvv{font-family:'Orbitron',sans-serif;font-size:36px;font-weight:300;color:var(--t1);line-height:1}
+.uvl{font-size:11px;color:var(--t2);margin-top:4px;letter-spacing:.7px}
+.uvbg{height:4px;background:rgba(255,255,255,.06);border-radius:100px;overflow:hidden;margin-top:10px}
+.uvf{height:100%;border-radius:100px;background:linear-gradient(90deg,#39ff14,#ffb700,#ff6b00,#ff3e5f);transition:width 1.2s ease}
+.sunrow{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.sunit{text-align:center}
+.suico{font-size:22px;margin-bottom:5px}
+.sutm{font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;color:var(--t1)}
+.sulb{font-size:10px;color:var(--t3);margin-top:2px;letter-spacing:.5px}
+.sunln{flex:1;height:1px;background:linear-gradient(90deg,rgba(255,183,0,.22),transparent,rgba(255,183,0,.22))}
+/* عناصر جديدة للغبار وغبار الطلع */
+.airborne-row {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 12px;
+  gap: 8px;
+}
+.airborne-item {
+  flex: 1;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  padding: 8px 4px;
+  text-align: center;
+}
+.airborne-item .value {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 16px;
+  color: var(--c);
+  line-height: 1.3;
+}
+.airborne-item .label {
+  font-size: 9px;
+  color: var(--t3);
+  letter-spacing: 0.5px;
+}
+
+/* ═══════════════════════════════════════════
+   AQI (مع توسعة للأحوال الجوية)
+═══════════════════════════════════════════ */
+.aqic{
+  background:var(--panel2);border:1px solid var(--line2);
+  border-radius:var(--rad2);padding:17px;margin-bottom:10px;
+  position:relative;overflow:hidden;
+}
+.aqic::before{
+  content:'';position:absolute;top:0;left:12%;right:12%;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(57,255,20,.1),transparent);
+}
+.aqihdr{font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2.5px;color:var(--t2);display:flex;align-items:center;gap:7px;margin-bottom:13px}
+.aqihdr i{color:var(--g);text-shadow:0 0 6px rgba(57,255,20,.35)}
+.aqiv{font-family:'Orbitron',sans-serif;font-size:42px;font-weight:300;color:var(--g);line-height:1;text-shadow:0 0 20px rgba(57,255,20,.28)}
+.aqil{font-size:12px;color:var(--t2);margin-top:3px;letter-spacing:.5px}
+.aqib{padding:4px 11px;border-radius:5px;font-size:11px;font-weight:700;margin-top:8px;display:inline-block;letter-spacing:.7px;font-family:'DM Mono',monospace}
+.ag{background:rgba(57,255,20,.1);border:1px solid rgba(57,255,20,.22);color:var(--g)}
+.am{background:rgba(255,183,0,.1);border:1px solid rgba(255,183,0,.22);color:var(--a)}
+.ap{background:rgba(255,62,95,.1);border:1px solid rgba(255,62,95,.22);color:var(--r)}
+.aqibg{height:4px;background:rgba(255,255,255,.06);border-radius:100px;overflow:hidden;margin:13px 0 5px}
+.aqif{height:100%;border-radius:100px;background:linear-gradient(90deg,#39ff14 0%,#ffb700 50%,#ff3e5f 100%);transition:width 1.2s cubic-bezier(.4,0,.2,1)}
+.aqisc{display:flex;justify-content:space-between;font-size:10px;color:var(--t3);font-family:'DM Mono',monospace;margin-bottom:13px}
+.aqidet{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.aii{background:rgba(255,255,255,.025);border:1px solid var(--line2);border-radius:12px;padding:10px;text-align:center}
+.aiv{font-family:'Orbitron',sans-serif;font-size:14px;color:var(--t1);margin-bottom:3px}
+.ail{font-size:10px;color:var(--t3)}
+
+/* ═══════════════════════════════════════════
+   WEEKLY
+═══════════════════════════════════════════ */
+.wgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(62px,1fr));gap:7px}
+.dc{
+  background:rgba(255,255,255,.026);border:1px solid var(--line2);
+  border-radius:13px;padding:11px 5px;text-align:center;
+  transition:border-color .18s,transform .18s;
+}
+.dc:hover{border-color:rgba(0,229,255,.22);transform:translateY(-2px);box-shadow:0 0 12px rgba(0,229,255,.07)}
+.dn{font-size:9px;color:var(--t3);margin-bottom:6px;font-family:'DM Mono',monospace;letter-spacing:.5px}
+.di{font-size:15px;margin-bottom:6px}
+.dh{font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;color:var(--c);margin-bottom:2px;text-shadow:0 0 5px rgba(0,229,255,.3)}
+.dl{font-size:10px;color:var(--t3)}
+
+/* ═══════════════════════════════════════════
+   CONSOLE
+═══════════════════════════════════════════ */
+.concard{
+  background:#050810;border:1px solid rgba(0,229,255,.22);
+  border-radius:var(--rad2);overflow:hidden;margin-bottom:10px;
+  box-shadow:0 0 30px rgba(0,229,255,.07);
+}
+.conhdr{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 14px;border-bottom:1px solid rgba(0,229,255,.1);
+  background:rgba(0,229,255,.025);
+}
+.cdots{display:flex;gap:5px}
+.cdot{width:9px;height:9px;border-radius:50%}
+.cd1{background:#ff5f57}.cd2{background:#febc2e}.cd3{background:#28c840}
+.contit{
+  font-family:'DM Mono',monospace;font-size:11px;
+  letter-spacing:2px;color:var(--c);
+  display:flex;align-items:center;gap:7px;
+  text-shadow:0 0 6px rgba(0,229,255,.35);
+}
+.conacts{display:flex;gap:5px}
+.cbtn{
+  background:rgba(0,229,255,.04);border:1px solid rgba(0,229,255,.12);
+  border-radius:6px;padding:3px 9px;
+  font-size:10px;color:var(--t2);cursor:pointer;
+  font-family:'DM Mono',monospace;transition:all .18s;letter-spacing:.8px;
+  -webkit-tap-highlight-color:transparent;
+}
+.cbtn:hover{border-color:var(--c);color:var(--c)}
+.conbody{
+  padding:10px 14px;max-height:185px;overflow-y:auto;
+  font-family:'DM Mono',monospace;font-size:11px;line-height:1.8;
+  scrollbar-width:thin;scrollbar-color:rgba(0,229,255,.15) transparent;
+}
+.conbody::-webkit-scrollbar{width:3px}
+.conbody::-webkit-scrollbar-thumb{background:rgba(0,229,255,.2);border-radius:3px}
+.clog{display:flex;gap:8px}
+.ct{color:var(--t3);flex-shrink:0;font-size:10px}
+.cm{}
+.clog.info .cm{color:var(--c)} .clog.ok .cm{color:var(--g)}
+.clog.warn .cm{color:var(--a)} .clog.err .cm{color:var(--r)}
+.clog.sys  .cm{color:var(--v)}
+.coninrow{display:flex;border-top:1px solid rgba(0,229,255,.08);background:rgba(0,0,0,.18)}
+.conprompt{padding:10px 12px;font-family:'DM Mono',monospace;font-size:11px;color:var(--c);flex-shrink:0}
+.coninp{flex:1;background:transparent;border:none;color:var(--t1);font-family:'DM Mono',monospace;font-size:11px;outline:none;padding:10px 0}
+.coninp::placeholder{color:var(--t3)}
+
+/* ═══════════════════════════════════════════
+   LOADING SCREEN
+═══════════════════════════════════════════ */
+.loading{
+  position:fixed;inset:0;z-index:500;
+  background:rgba(4,6,14,.97);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  transition:opacity .4s;
+}
+.loading.gone{opacity:0;pointer-events:none}
+.spin{
+  width:44px;height:44px;border-radius:50%;
+  border:1px solid rgba(0,229,255,.12);border-top-color:var(--c);
+  animation:spin .75s linear infinite;margin-bottom:14px;
+  box-shadow:0 0 20px rgba(0,229,255,.16);
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.ltxt{font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:3.5px;color:var(--t2)}
+
+/* ═══════════════════════════════════════════
+   MODALS
+═══════════════════════════════════════════ */
+.ovlay{
+  display:none;
+  position:fixed;inset:0;z-index:400;
+  background:rgba(0,0,0,.85);
+  align-items:center;justify-content:center;
+  padding:14px;
+}
+.ovlay.show{display:flex}
+.mbox{
+  background:linear-gradient(155deg,#0d1526,#080d18);
+  border:1px solid var(--line3);border-radius:var(--rad2);
+  padding:22px;width:100%;
+  animation:mup .22s ease;
+  position:relative;overflow:hidden;
+}
+.mbox::before{
+  content:'';position:absolute;top:0;left:14%;right:14%;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(0,229,255,.25),transparent);
+}
+.mlaybx{max-width:400px;border-color:rgba(0,229,255,.22)}
+.mapibx{max-width:440px;border-color:rgba(57,255,20,.18)}
+@keyframes mup{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.mtit{
+  font-family:'Orbitron',sans-serif;font-size:12px;letter-spacing:2px;
+  color:var(--t1);margin-bottom:15px;display:flex;align-items:center;gap:8px;
+}
+.mtit i{color:var(--c);text-shadow:0 0 8px rgba(0,229,255,.38)}
+.lgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:13px;max-height:360px;overflow-y:auto}
+
+/* Notes Modal */
+.notes-area{
+  width:100%;background:var(--bg3);border:1px solid var(--line3);
+  border-radius:12px;padding:12px 14px;color:var(--t1);
+  font-family:'Cairo',sans-serif;font-size:13px;
+  outline:none;margin-bottom:10px;min-height:120px;resize:vertical;
+  transition:border-color .25s,box-shadow .25s;line-height:1.7;
+}
+.notes-area:focus{border-color:var(--c);box-shadow:0 0 0 2px rgba(0,229,255,.08)}
+.notes-area::placeholder{color:var(--t3)}
+.notes-meta{font-size:10px;color:var(--t3);font-family:'DM Mono',monospace;letter-spacing:.8px;margin-bottom:8px}
+.notes-contact{
+  background:rgba(0,229,255,.04);border:1px solid rgba(0,229,255,.12);
+  border-radius:10px;padding:10px 13px;margin-bottom:10px;
+  font-size:11px;color:var(--t2);line-height:1.9;
+}
+.notes-contact i{color:var(--c);margin-left:5px;width:14px}
+[dir=ltr] .notes-contact i{margin-right:5px;margin-left:0}
+/* layer items — real <button> */
+.lit{
+  background:var(--t4);border:1px solid var(--line2);
+  border-radius:13px;padding:15px;cursor:pointer;text-align:center;
+  display:flex;flex-direction:column;align-items:center;gap:7px;
+  transition:border-color .18s,background .18s;
+  -webkit-tap-highlight-color:transparent;width:100%;color:inherit;
+}
+.lit:hover,.lit:active{border-color:var(--c);background:var(--cA)}
+.lit i{font-size:21px;color:var(--c);text-shadow:0 0 7px rgba(0,229,255,.35)}
+.lit span{font-size:12px;color:var(--t2);letter-spacing:.3px}
+.closebtn{
+  width:100%;background:var(--t4);border:1px solid var(--line2);
+  border-radius:12px;padding:11px;color:var(--t2);cursor:pointer;
+  font-family:'Cairo',sans-serif;font-size:13px;
+  transition:all .18s;-webkit-tap-highlight-color:transparent;
+}
+.closebtn:hover{background:rgba(255,255,255,.08);color:var(--t1);border-color:var(--c)}
+.ast{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:11px;font-size:12px;margin-bottom:12px;letter-spacing:.3px}
+.ast.ok{background:rgba(57,255,20,.08);border:1px solid rgba(57,255,20,.2);color:var(--g)}
+.ast.no{background:rgba(255,183,0,.08);border:1px solid rgba(255,183,0,.2);color:var(--a)}
+.albl{font-size:12px;color:var(--t2);margin-bottom:7px;display:block;letter-spacing:.3px}
+.ainp{
+  width:100%;background:var(--bg3);border:1px solid var(--line3);
+  border-radius:12px;padding:12px 14px;color:var(--t1);
+  font-family:'DM Mono',monospace;font-size:12px;
+  outline:none;margin-bottom:10px;
+  transition:border-color .25s,box-shadow .25s;letter-spacing:.5px;
+}
+.ainp:focus{border-color:var(--g);box-shadow:0 0 0 2px rgba(57,255,20,.08)}
+.ainp::placeholder{color:var(--t3)}
+.asave{
+  width:100%;background:rgba(57,255,20,.1);border:1px solid rgba(57,255,20,.4);
+  border-radius:12px;padding:12px;color:var(--g);
+  font-family:'Cairo',sans-serif;font-size:13px;font-weight:700;
+  cursor:pointer;transition:all .2s;margin-bottom:7px;
+  text-shadow:0 0 8px rgba(57,255,20,.3);
+  box-shadow:0 0 12px rgba(57,255,20,.1);-webkit-tap-highlight-color:transparent;
+}
+.asave:hover,.asave:active{background:rgba(57,255,20,.18);box-shadow:0 0 22px rgba(57,255,20,.22)}
+.adel{
+  width:100%;background:rgba(255,62,95,.07);border:1px solid rgba(255,62,95,.2);
+  border-radius:12px;padding:10px;color:var(--r);
+  font-family:'Cairo',sans-serif;font-size:12px;
+  cursor:pointer;transition:all .2s;margin-bottom:10px;
+  -webkit-tap-highlight-color:transparent;
+}
+.adel:hover{background:rgba(255,62,95,.14)}
+.ahint{font-size:11px;color:var(--t3);text-align:center;line-height:1.8;margin-bottom:12px}
+.ahint a{color:var(--c);text-decoration:none}
+
+/* ═══════════════════════════════════════════
+   SHARE DROPDOWN
+═══════════════════════════════════════════ */
+.share-dropdown {
+  position: fixed;
+  top: auto;
+  left: auto;
+  background: var(--panel);
+  border: 1px solid var(--cC);
+  border-radius: var(--rad);
+  padding: 8px;
+  z-index: 500;
+  min-width: 200px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.8), 0 0 20px rgba(0,229,255,.1);
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  animation: mup .18s ease;
+}
+.share-dropdown.show {
+  display: flex;
+}
+.share-item {
+  background: transparent;
+  border: none;
+  padding: 10px 12px;
+  color: var(--t2);
+  font-family: 'Cairo', sans-serif;
+  font-size: 13px;
+  text-align: right;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: background 0.15s, color 0.15s;
+  width: 100%;
+}
+.share-item i {
+  width: 18px;
+  color: var(--c);
+}
+.share-item:hover {
+  background: var(--cA);
+  color: var(--c);
+}
+[dir=ltr] .share-item {
+  text-align: left;
+}
+
+/* ═══════════════════════════════════════════
+   FOOTER
+═══════════════════════════════════════════ */
+.foot{
+  text-align:center;padding:22px 0 10px;
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  border-top:1px solid var(--line2);margin-top:4px;
+}
+.footsig{
+  font-family:'Cairo',sans-serif;font-size:16px;font-weight:700;
+  color: var(--c); /* لون ثابت */
+  letter-spacing: 0.5px;
+}
+.footcopy{font-size:10px;color:var(--t3);font-family:'DM Mono',monospace;letter-spacing:1.5px}
+
+/* ═══════════════════════════════════════════
+   RESPONSIVE
+═══════════════════════════════════════════ */
+@media(max-width:580px){
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .wgrid{grid-template-columns:repeat(auto-fill,minmax(58px,1fr))}
+  
+  .exrow{grid-template-columns:1fr}
+  .hero{padding:15px}
+  .lgrid{grid-template-columns:repeat(2,1fr)}
+}
+/* ═══════════════════════════════════════════
+   ALTITUDE SLIDER
+═══════════════════════════════════════════ */
+.alt-slider-wrap{
+  background:rgba(0,229,255,.04);
+  border:1px solid rgba(0,229,255,.15);
+  border-radius:12px;padding:12px 14px;margin-bottom:12px;
+}
+.alt-label{
+  font-size:12px;color:var(--t2);margin-bottom:10px;
+  display:flex;align-items:center;gap:7px;font-family:'Cairo',sans-serif;
+}
+#ALT_VAL{color:var(--c);font-family:'DM Mono',monospace;font-size:11px;
+  background:rgba(0,229,255,.08);border:1px solid rgba(0,229,255,.2);
+  border-radius:5px;padding:2px 8px;margin-right:4px}
+.alt-slider{
+  width:100%;-webkit-appearance:none;appearance:none;
+  height:4px;border-radius:100px;outline:none;cursor:pointer;
+  background:linear-gradient(90deg,var(--c) 0%,rgba(0,229,255,.15) 0%);
+  transition:background .2s;
+}
+.alt-slider::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;
+  width:22px;height:22px;border-radius:50%;
+  background:radial-gradient(circle,#fff 20%,var(--c) 70%);
+  box-shadow:0 0 10px rgba(0,229,255,.5);cursor:pointer;
+  border:2px solid rgba(0,229,255,.6);
+}
+.alt-slider::-moz-range-thumb{
+  width:22px;height:22px;border-radius:50%;
+  background:radial-gradient(circle,#fff 20%,var(--c) 70%);
+  box-shadow:0 0 10px rgba(0,229,255,.5);cursor:pointer;
+  border:2px solid rgba(0,229,255,.6);
+}
+</style>
+</head>
+<body>
+
+<!-- BG -->
+<div class="orb o1"></div>
+<div class="orb o2"></div>
+<div class="orb o3"></div>
+<canvas id="RAIN"></canvas>
+<div id="SCAN"></div>
+
+<!-- LOADING -->
+<div class="loading" id="LOAD">
+  <div class="spin"></div>
+  <div class="ltxt" id="LTXT">جاري تحليل الغلاف الجوي</div>
+</div>
+
+<!-- LAYERS MODAL -->
+<div class="ovlay" id="OV_L">
+  <div class="mbox mlaybx" style="max-width:490px">
+    <div class="mtit"><i class="fas fa-layer-group"></i><span id="TT_LY">طبقات الخريطة</span></div>
+    <div class="lgrid">
+      <button class="lit" onclick="setLy('radar',null,true);cOv('OV_L')"><i class="fas fa-satellite-dish"></i><span id="TT_L_RD">رادار الطقس</span></button>
+      <button class="lit" onclick="setLy('satellite',null,true);cOv('OV_L')"><i class="fas fa-satellite"></i><span id="TT_L_ST">القمر الصناعي</span></button>
+      <button class="lit" onclick="setLy('wind',null,true);cOv('OV_L')"><i class="fas fa-wind"></i><span id="TT_L1">الرياح</span></button>
+      <button class="lit" onclick="setLy('rain',null,true);cOv('OV_L')"><i class="fas fa-cloud-rain"></i><span id="TT_L2">مطر ورعد</span></button>
+      <button class="lit" onclick="setLy('temp',null,true);cOv('OV_L')"><i class="fas fa-temperature-high"></i><span id="TT_L3">الحرارة</span></button>
+      <button class="lit" onclick="setLy('clouds',null,true);cOv('OV_L')"><i class="fas fa-cloud"></i><span id="TT_L4">السحب</span></button>
+      <button class="lit" onclick="setLy('waves',null,true);cOv('OV_L')"><i class="fas fa-water"></i><span id="TT_L9">الأمواج</span></button>
+      <button class="lit" onclick="setLy('accumulation',null,true);cOv('OV_L')"><i class="fas fa-cloud-showers-heavy"></i><span id="TT_L_AC">تراكم الأمطار</span></button>
+      <button class="lit" onclick="setLy('gust',null,true);cOv('OV_L')"><i class="fas fa-flag"></i><span id="TT_L_GS">هبّات الرياح</span></button>
+      <button class="lit" onclick="setLy('so2',null,true);cOv('OV_L')"><i class="fas fa-flask"></i><span id="TT_L_SO2">SO₂</span></button>
+      <button class="lit" onclick="setLy('ozone',null,true);cOv('OV_L')"><i class="fas fa-circle-dot"></i><span id="TT_L_OZ">الأوزون السطحي</span></button>
+      <button class="lit" onclick="setLy('cosc',null,true);cOv('OV_L')"><i class="fas fa-smog"></i><span id="TT_L_CO">تركيز CO</span></button>
+      <button class="lit" onclick="setLy('dustStorm',null,true);cOv('OV_L')"><i class="fas fa-skull"></i><span id="TT_L_DS">كتلة الغبار</span></button>
+      <button class="lit" onclick="setLy('pressure',null,true);cOv('OV_L')"><i class="fas fa-gauge-high"></i><span id="TT_L8">الضغط</span></button>
+      <button class="lit" onclick="setLy('capAlerts',null,true);cOv('OV_L')"><i class="fas fa-triangle-exclamation"></i><span id="TT_L_CA">التوقعات الخطرة</span></button>
+      <button class="lit" onclick="setLy('alerts',null,true);cOv('OV_L')"><i class="fas fa-bell"></i><span id="TT_L_AL">تحذيرات الطقس</span></button>
+      <button class="lit" onclick="setLy('drought',null,true);cOv('OV_L')"><i class="fas fa-droplet-slash"></i><span id="TT_L_DR">مراقبة الجفاف</span></button>
+      <button class="lit" onclick="setLy('fireDanger',null,true);cOv('OV_L')"><i class="fas fa-fire"></i><span id="TT_L_FD">Fire Danger</span></button>
+      <button class="lit" onclick="setLy('dust',null,true);cOv('OV_L')"><i class="fas fa-wind"></i><span id="TT_L5">الغبار</span></button>
+      <button class="lit" onclick="setLy('dew',null,true);cOv('OV_L')"><i class="fas fa-droplet"></i><span id="TT_L6">الندى</span></button>
+      <button class="lit" onclick="setLy('pollen',null,true);cOv('OV_L')"><i class="fas fa-seedling"></i><span id="TT_L7">غبار الطلع</span></button>
+    </div>
+    <!-- شريط الارتفاع -->
+    <div class="alt-slider-wrap">
+      <div class="alt-label"><i class="fas fa-layer-group" style="color:var(--c)"></i> <span id="TT_ALT">الارتفاع:</span> <span id="ALT_VAL">سطح الأرض</span></div>
+      <input type="range" class="alt-slider" id="ALT_SL" min="0" max="5" value="0" oninput="setAlt(this.value)"/>
+    </div>
+    <button class="closebtn" onclick="cOv('OV_L')" id="TT_LC">إغلاق</button>
+  </div>
+</div>
+
+<!-- NOTES MODAL -->
+<div class="ovlay" id="OV_N">
+  <div class="mbox mapibx" style="border-color:rgba(168,85,247,.25);max-width:420px">
+    <div class="mtit"><i class="fas fa-note-sticky" style="color:var(--v)"></i><span id="TT_NT">ملاحظاتي</span></div>
+    <div class="notes-meta" id="NT_CNT">0 / 500 حرف</div>
+    <textarea class="notes-area" id="NTINP" placeholder="اكتب ملاحظاتك هنا..." maxlength="500" oninput="updNoteCount()"></textarea>
+    <div class="notes-contact">
+      <div><i class="fas fa-phone"></i>00963998854450</div>
+      <div><i class="fas fa-envelope"></i><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="d7b9beb3b6bba0b6a3b1b6eeee97b0bab6bebbf9b4b8ba">[email&#160;protected]</a></div>
+    </div>
+    <button class="asave" style="background:rgba(168,85,247,.12);border-color:rgba(168,85,247,.4);color:var(--v);text-shadow:0 0 8px rgba(168,85,247,.3)" onclick="saveNote()" id="TT_NS">💾 حفظ الملاحظة</button>
+    <button class="asave" style="background:rgba(0,229,255,.10);border-color:rgba(0,229,255,.4);color:var(--c);text-shadow:0 0 8px rgba(0,229,255,.3);margin-top:0" onclick="sendNote()" id="TT_NSND">📤 إرسال بالبريد</button>
+    <button class="adel" onclick="clearNote()" id="TT_ND">🗑 مسح الملاحظة</button>
+    <button class="closebtn" onclick="cOv('OV_N')" id="TT_NC">إغلاق</button>
+  </div>
+</div>
+
+<!-- API MODAL -->
+<div class="ovlay" id="OV_K">
+  <div class="mbox mapibx">
+    <div class="mtit"><i class="fas fa-key"></i><span id="TT_KT">مفتاح OpenWeatherMap</span></div>
+    <div class="ast no" id="KST"><i class="fas fa-circle-exclamation"></i><span id="TT_KS">لا يوجد مفتاح — وضع العرض</span></div>
+    <label class="albl" id="TT_KL">أدخل مفتاح API:</label>
+    <input class="ainp" id="KINP" placeholder="e.g. a1b2c3d4e5f67890..." autocomplete="off"/>
+    <button class="asave" onclick="saveKey()" id="TT_KA">حفظ وتطبيق</button>
+    <button class="adel"  onclick="delKey()"  id="TT_KD">حذف المفتاح</button>
+    <div class="ahint"><span id="TT_H1">مفتاح مجاني من</span> <a href="https://openweathermap.org/api" target="_blank">openweathermap.org</a><br><span id="TT_H2">يُحفظ في المتصفح تلقائياً</span></div>
+    <button class="closebtn" onclick="cOv('OV_K')" id="TT_KC">إغلاق</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div class="app">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="logo">AERO<em>-X</em></div>
+    <div class="sig">NIDAL WATFA</div> <!-- الاسم الإنجليزي بخط Cairo -->
+    <div class="livepill"><div class="ldot"></div>LIVE</div>
+    <div class="sp"></div>
+    <select class="langsel" id="LANG" onchange="setLang(this.value)">
+      <option value="ar">🇸🇾 العربية</option>
+      <option value="en">🇬🇧 English</option>
+      <option value="fr">🇫🇷 Français</option>
+      <option value="de">🇩🇪 Deutsch</option>
+      <option value="es">🇪🇸 Español</option>
+      <option value="it">🇮🇹 Italiano</option>
+      <option value="ru">🇷🇺 Русский</option>
+      <option value="tr">🇹🇷 Türkçe</option>
+      <option value="fa">🇮🇷 فارسی</option>
+      <option value="zh">🇨🇳 中文</option>
+    </select>
+    <div class="btns">
+      <!-- ALL ICON BUTTONS ARE REAL <button> ELEMENTS -->
+      <button class="ib" id="IBGPS" onclick="getGPS()" title="GPS"><i class="fas fa-location-crosshairs"></i></button>
+      <button class="ib" id="IBKEY" onclick="oOv('OV_K')" title="API Key"><i class="fas fa-key"></i><span class="kd" id="KDOT"></span></button>
+      <button class="ib" onclick="oOv('OV_L')" title="Layers"><i class="fas fa-layer-group"></i></button>
+      <button class="ib" id="IBCON" onclick="togCon()" title="Console"><i class="fas fa-terminal"></i></button>
+      <button class="ib" onclick="oOv('OV_N')" title="Notes" style="color:var(--v)"><i class="fas fa-note-sticky"></i></button>
+      <!-- زر المشاركة (يفتح القائمة المنسدلة) -->
+      <button class="ib" id="IBSHARE" onclick="toggleShareDropdown()" title="Share"><i class="fas fa-share-nodes"></i></button>
+      <!-- زر تثبيت التطبيق (PWA) يظهر عند دعم التثبيت -->
+      <button class="ib" id="IBINSTALL" onclick="installApp()" title="تثبيت التطبيق" style="display:none"><i class="fas fa-download"></i></button>
+    </div>
+    <!-- قائمة المشاركة المنسدلة -->
+    <div class="share-dropdown" id="shareDropdown">
+      <button class="share-item" onclick="shareAction('native')" id="SHARE_NATIVE"><i class="fas fa-share-nodes"></i> <span id="TT_SH_NAT">مشاركة</span></button>
+      <div style="height:1px;background:var(--line2);margin:3px 0"></div>
+      <button class="share-item" onclick="shareAction('copy')"><i class="fas fa-link"></i> <span id="TT_SH_CP">نسخ الرابط</span></button>
+      <button class="share-item" onclick="shareAction('whatsapp')"><i class="fab fa-whatsapp" style="color:#25d366"></i> WhatsApp</button>
+      <button class="share-item" onclick="shareAction('twitter')"><i class="fab fa-twitter" style="color:#1da1f2"></i> Twitter / X</button>
+      <button class="share-item" onclick="shareAction('facebook')"><i class="fab fa-facebook" style="color:#1877f2"></i> Facebook</button>
+      <button class="share-item" onclick="shareAction('email')"><i class="fas fa-envelope"></i> <span id="TT_SH_EM">البريد الإلكتروني</span></button>
+    </div>
+  </div>
+
+  <!-- SEARCH -->
+  <div class="srow" id="SROW">
+    <div class="swrap">
+      <input class="sinp" id="SINP"
+        placeholder="ابحث عن أي مدينة أو قرية..."
+        oninput="onAC(this.value)"
+        onkeydown="onSK(event)"
+        autocomplete="off"/>
+      <button class="sbtn" onclick="doSrch()"><i class="fas fa-magnifying-glass"></i></button>
+      <div class="acdrop" id="ACDR"></div>
+    </div>
+    <button class="gbtn" onclick="oOv('OV_L')">
+      <i class="fas fa-earth-americas"></i><span id="TT_GB">رصد عالمي</span>
+    </button>
+  </div>
+
+  <!-- BADGES -->
+  <div class="bdg bdgW" id="BDG_D"><i class="fas fa-circle-info"></i><span id="TT_BD">وضع العرض — اضغط 🔑 لإضافة مفتاح API</span></div>
+  <div class="bdg bdgG" id="BDG_K"><i class="fas fa-circle-check"></i><span id="TT_BK">مفتاح API نشط — بيانات حية</span></div>
+
+  <!-- FAVS -->
+  <div class="favrow" id="FAVROW" style="display:none"></div>
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="herotop">
+      <div class="cpill"><i class="fas fa-location-dot"></i><span id="CITY">DAMASCUS</span></div>
+      <button class="favbtn" id="FAVBTN" onclick="togFav()"><i class="fas fa-star"></i></button>
+    </div>
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-top:4px">
+      <div>
+        <div class="temp" id="TEMP">5<sup>°</sup></div>
+        <div class="trange">
+          <div class="tlo"><i class="fas fa-arrow-down"></i><span id="TLO">3°</span></div>
+          <div class="thi"><i class="fas fa-arrow-up"></i><span id="THI">5°</span></div>
+        </div>
+        <div class="feels"><i class="fas fa-thermometer-half" style="color:var(--c)"></i><span id="FEELS">الملموسة 2°</span></div>
+      </div>
+      <div class="condside">
+        <div class="cico" id="CICO">🌧️</div>
+        <div class="ctag" id="CTAG">RAINY</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats">
+    <div class="stat"><div class="sico">💧</div><div class="sv"><span id="SH">72</span><span class="su">%</span></div><div class="sl" id="LH">الرطوبة</div></div>
+    <div class="stat"><div class="sico">🌬️</div><div class="sv"><span id="SW">18</span><span class="su" id="WU">كم/س</span></div><div class="sl" id="LW">الرياح</div></div>
+    <div class="stat"><div class="sico">👁️</div><div class="sv"><span id="SV">8</span><span class="su" id="VU">كم</span></div><div class="sl" id="LV">الرؤية</div></div>
+    <div class="stat"><div class="sico">⬇️</div><div class="sv"><span id="SP">1008</span><span class="su">hPa</span></div><div class="sl" id="LP">الضغط</div></div>
+  </div>
+
+  <!-- MAP -->
+  <div class="mapsec" id="MAPSEC">
+    <div class="maphdr">
+      <div class="maptit"><i class="fas fa-map-location-dot"></i><span id="TT_MT">الخريطة الجوية</span></div>
+      <div class="maplys">
+        <button class="mlb on" id="MLB_W"  onclick="setLy('wind',this)"     ><span id="MLB_W_T">الرياح</span></button>
+        <button class="mlb"    id="MLB_R"  onclick="setLy('rain',this)"     ><span id="MLB_R_T">المطر</span></button>
+        <button class="mlb"    id="MLB_T"  onclick="setLy('temp',this)"     ><span id="MLB_T_T">الحرارة</span></button>
+        <button class="mlb"    id="MLB_C"  onclick="setLy('clouds',this)"   ><span id="MLB_C_T">السحب</span></button>
+        <button class="mlb"    id="MLB_RD" onclick="setLy('radar',this)"    ><span id="MLB_RD_T">الرادار</span></button>
+        <button class="mlb"    id="MLB_ST" onclick="setLy('satellite',this)"><span id="MLB_ST_T">القمر الصناعي</span></button>
+        <button class="mlb"    id="MLB_GS" onclick="setLy('gust',this)"     ><span id="MLB_GS_T">هبّات الرياح</span></button>
+        <button class="mlb"    id="MLB_AC" onclick="setLy('accumulation',this)"><span id="MLB_AC_T">تراكم الأمطار</span></button>
+        <button class="mlb"    id="MLB_WV" onclick="setLy('waves',this)"    ><span id="MLB_WV_T">الأمواج</span></button>
+        <button class="mlb"    id="MLB_PR" onclick="setLy('pressure',this)" ><span id="MLB_PR_T">الضغط</span></button>
+        <button class="fsb"    onclick="togFS()" title="Fullscreen"><i class="fas fa-expand"></i></button>
+      </div>
+    </div>
+    <iframe id="WINDY" class="mapframe" src="about:blank" frameborder="0" allowfullscreen allow="fullscreen; geolocation; accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"></iframe>
+  </div>
+
+  <!-- HOURLY -->
+  <div class="scard">
+    <div class="shdr"><i class="fas fa-chart-line"></i><span id="TT_HR">HOURLY TREND</span></div>
+    <div class="hscroll" id="HOURLY"></div>
+  </div>
+
+  <!-- QUICK -->
+  <div class="qgrid">
+    <button class="qc q1" onclick="setLy('wind');scrMap()"><i class="fas fa-wind"></i><span id="TT_QW">الرياح</span></button>
+    <button class="qc q2" onclick="setLy('rain');scrMap()"><i class="fas fa-cloud-rain"></i><span id="TT_QR">المطر</span></button>
+    <button class="qc q3" onclick="setLy('temp');scrMap()"><i class="fas fa-temperature-high"></i><span id="TT_QH">الحرارة</span></button>
+    <button class="qc q4" onclick="setLy('clouds');scrMap()"><i class="fas fa-cloud"></i><span id="TT_QS">السحب</span></button>
+  </div>
+
+  <!-- UV + SUN + مؤشرات محمولة جواً -->
+  <div class="exrow">
+    <div class="exc">
+      <div class="extit"><i class="fas fa-sun"></i><span id="TT_UV">مؤشر الأشعة</span></div>
+      <div class="uvv" id="UVV">4</div>
+      <div class="uvl" id="UVL">معتدل</div>
+      <div class="uvbg"><div class="uvf" id="UVBAR" style="width:35%"></div></div>
+      <!-- عناصر جديدة للغبار وغبار الطلع -->
+      <div class="airborne-row">
+        <div class="airborne-item"><span class="value" id="DUST">15</span><span class="label"> غبار (µg/m³)</span></div>
+        <div class="airborne-item"><span class="value" id="POLLEN">45</span><span class="label"> طلع (grains/m³)</span></div>
+      </div>
+    </div>
+    <div class="exc">
+      <div class="extit"><i class="fas fa-clock"></i><span id="TT_SN">الشروق والغروب</span></div>
+      <div class="sunrow">
+        <div class="sunit"><div class="suico">🌅</div><div class="sutm" id="SRISE">06:21</div><div class="sulb" id="TT_SR">شروق</div></div>
+        <div class="sunln"></div>
+        <div class="sunit"><div class="suico">🌇</div><div class="sutm" id="SSET">17:48</div><div class="sulb" id="TT_SS">غروب</div></div>
+      </div>
+      <!-- عنصر الندى -->
+      <div style="margin-top:10px; text-align:center; font-size:11px; color:var(--t2)"><i class="fas fa-droplet" style="color:var(--c)"></i> <span id="DEW">الندى: 2°C</span></div>
+    </div>
+  </div>
+
+  <!-- AQI -->
+  <div class="aqic">
+    <div class="aqihdr"><i class="fas fa-wind"></i><span id="TT_AQ">جودة الهواء</span></div>
+    <div class="aqiv" id="AQIV">25</div>
+    <div class="aqil" id="AQIL">PM10 الجسيمات الدقيقة</div>
+    <div class="aqib ag" id="AQIB">جيد</div>
+    <div class="aqibg"><div class="aqif" id="AQIF" style="width:12%"></div></div>
+    <div class="aqisc"><span>0</span><span>50</span><span>100</span><span>150</span><span>200+</span></div>
+    <div class="aqidet">
+      <div class="aii"><div class="aiv" id="PM25">12</div><div class="ail">PM2.5</div></div>
+      <div class="aii"><div class="aiv" id="PM10">25</div><div class="ail">PM10</div></div>
+      <div class="aii"><div class="aiv" id="O3V">38</div><div class="ail">O₃</div></div>
+    </div>
+  </div>
+
+  <!-- WEEKLY -->
+  <div class="scard">
+    <div class="shdr"><i class="fas fa-calendar-week"></i><span id="TT_WK">توقعات 15 يوم</span></div>
+    <div class="wgrid" id="WEEKLY"></div>
+  </div>
+
+  <!-- CONSOLE -->
+  <div class="concard" id="CONCARD" style="display:none">
+    <div class="conhdr">
+      <div class="cdots"><span class="cdot cd1"></span><span class="cdot cd2"></span><span class="cdot cd3"></span></div>
+      <div class="contit"><i class="fas fa-terminal"></i>AERO-X CONSOLE</div>
+      <div class="conacts">
+        <button class="cbtn" onclick="clrCon()">CLEAR</button>
+        <button class="cbtn" onclick="expCon()">EXPORT</button>
+      </div>
+    </div>
+    <div class="conbody" id="CONLOG"></div>
+    <div class="coninrow">
+      <span class="conprompt">aero-x $</span>
+      <input class="coninp" id="CONINP" placeholder="type 'help'" onkeydown="onCC(event)"/>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="foot">
+    <div class="footsig">NIDAL WATFA</div>
+    <div class="footcopy">AERO-X · CYBER EDITION · 2026</div>
+  </div>
+
+</div><!-- /app -->
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+// ══════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════
+let KEY  = localStorage.getItem('ax_key')||'';
+let lang = 'ar';
+let lyr  = 'wind'; // default layer
+let lat  = 33.51, lon = 36.29;
+let WD   = null;   // current weather data
+let favs = JSON.parse(localStorage.getItem('ax_favs')||'[]');
+let conV = false;
+let acT  = null, acList = [];
+const logs = [];
+const ICO  = {Clear:'☀️',Clouds:'⛅',Rain:'🌧️',Snow:'❄️',Thunderstorm:'⛈️',Drizzle:'🌦️',Mist:'🌫️',Fog:'🌫️'};
+
+// ══════════════════════════════════════════
+// DEMO DATA (محسّنة مع قيم للغبار والندى وغبار الطلع)
+// ══════════════════════════════════════════
+const DEMO_TEMPLATE = {
+  city:'Damascus', temp:5, feels:2, low:3, high:5, humidity:72, wind:18, visibility:8, pressure:1008,
+  condition:'Rain', uv:4, sunrise:'06:21', sunset:'17:48',
+  dust:15, pollen:45, dew:2,  // قيم افتراضية للمؤشرات الجديدة
+  aqi:25, pm25:12, pm10:25, o3:38,
+  forecast:[
+    {h:5,l:3,c:'Rain'},{h:7,l:2,c:'Clouds'},{h:10,l:4,c:'Clear'},{h:8,l:3,c:'Clouds'},
+    {h:6,l:1,c:'Rain'},{h:9,l:4,c:'Clear'},{h:11,l:5,c:'Clear'},
+    {h:13,l:6,c:'Clear'},{h:12,l:5,c:'Clouds'},{h:8,l:3,c:'Rain'},
+    {h:9,l:4,c:'Clouds'},{h:14,l:7,c:'Clear'},{h:15,l:8,c:'Clear'},
+    {h:10,l:5,c:'Clouds'},{h:7,l:2,c:'Rain'}
+  ],
+  hourly:[
+    {t:'now',v:5,c:'Rain'},{t:'01:00',v:4,c:'Rain'},{t:'02:00',v:4,c:'Rain'},
+    {t:'03:00',v:3,c:'Clouds'},{t:'04:00',v:3,c:'Clouds'},{t:'05:00',v:4,c:'Clear'},{t:'06:00',v:5,c:'Clear'}
+  ]
+};
+
+// ══════════════════════════════════════════
+// TRANSLATIONS (مختصرة للاختصار)
+// ══════════════════════════════════════════
+const TR={
+ar:{dir:'rtl',srch:'ابحث عن أي مدينة أو قرية...',load:'جاري تحليل الغلاف الجوي',feels:'الملموسة',
+  demo:'وضع العرض — اضغط 🔑 لإضافة مفتاح API',ok:'مفتاح API نشط — بيانات حية',
+  glob:'رصد عالمي',now:'الآن',mt:'الخريطة الجوية',ht:'HOURLY TREND',wt:'توقعات 15 يوم',
+  aqt:'جودة الهواء',lyt:'طبقات الخريطة',
+  l1:'الرياح',l2:'مطر ورعد',l3:'الحرارة',l4:'السحب',l5:'الغبار',l6:'الندى',l7:'غبار الطلع',l8:'الضغط',l9:'الأمواج',
+  lRD:'رادار الطقس',lST:'القمر الصناعي',lGS:'هبّات الرياح',lAC:'تراكم الأمطار',
+  cl:'إغلاق',qw:'الرياح',qr:'المطر',qh:'الحرارة',qs:'السحب',
+  lh:'الرطوبة',lw:'الرياح',lv:'الرؤية',lp:'الضغط',wu:'كم/س',vu:'كم',
+  bw:'الرياح',br:'المطر',bt:'الحرارة',bc:'السحب',
+  kt:'مفتاح OpenWeatherMap',kl:'أدخل مفتاح API:',ks:'حفظ وتطبيق',kd:'حذف المفتاح',
+  h1:'مفتاح مجاني من',h2:'يُحفظ في المتصفح',kok:'✓ مفتاح نشط',kno:'لا يوجد مفتاح',
+  nf:'المدينة غير موجودة',
+  uvt:'مؤشر الأشعة',snt:'الشروق والغروب',srl:'شروق',ssl:'غروب',
+  uvls:['منخفض','معتدل','مرتفع','مرتفع جداً','خطر'],
+  ag:'جيد',am:'مقبول',ap:'غير صحي',
+  days:['أحد','اثنين','ثلاثاء','أربعاء','خميس','جمعة','سبت'],
+  cond:{Clear:'سماء صافية',Clouds:'غائم',Rain:'ممطر',Snow:'ثلجي',Thunderstorm:'عاصفة',Drizzle:'رذاذ',Mist:'ضبابي',Fog:'ضباب'},
+  nt:'ملاحظاتي',ns:'حفظ الملاحظة',nd:'مسح الملاحظة'},
+
+en:{dir:'ltr',srch:'Search city or village...',load:'Fetching Atmosphere',feels:'Feels like',
+  demo:'Demo Mode — Tap 🔑 to add API key',ok:'API key active — Live data',
+  glob:'Global View',now:'NOW',mt:'Weather Map',ht:'HOURLY TREND',wt:'15-Day Outlook',
+  aqt:'Air Quality',lyt:'Map Layers',
+  l1:'Wind',l2:'Rain & Thunder',l3:'Temp',l4:'Clouds',l5:'Dust',l6:'Dew',l7:'Pollen',l8:'Pressure',l9:'Waves',
+  lRD:'Radar',lST:'Satellite',lGS:'Gusts',lAC:'Precip. Accum.',
+  cl:'Close',qw:'Wind',qr:'Rain',qh:'Temp',qs:'Clouds',
+  lh:'Humidity',lw:'Wind',lv:'Visibility',lp:'Pressure',wu:'km/h',vu:'km',
+  bw:'Wind',br:'Rain',bt:'Temp',bc:'Clouds',
+  kt:'OpenWeatherMap API Key',kl:'Enter API key:',ks:'Save & Apply',kd:'Remove Key',
+  h1:'Free key at',h2:'Saved in your browser',kok:'✓ API key active',kno:'No key — Demo mode',
+  nf:'City not found',
+  uvt:'UV Index',snt:'Sunrise & Sunset',srl:'Sunrise',ssl:'Sunset',
+  uvls:['Low','Moderate','High','Very High','Extreme'],
+  ag:'Good',am:'Moderate',ap:'Unhealthy',
+  days:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
+  cond:{Clear:'Clear Sky',Clouds:'Cloudy',Rain:'Rainy',Snow:'Snowy',Thunderstorm:'Thunderstorm',Drizzle:'Drizzle',Mist:'Misty',Fog:'Foggy'},
+  nt:'My Notes',ns:'Save Note',nd:'Clear Note'},
+
+fr:{dir:'ltr',srch:'Rechercher une ville...',load:'Analyse atmosphérique',feels:'Ressenti',
+  demo:'Mode démo — Appuyez 🔑 pour API',ok:'Clé API active — données réelles',
+  glob:'Vue mondiale',now:'MAINT.',mt:'Carte météo',ht:'TENDANCE HORAIRE',wt:'Prévisions 15 jours',
+  aqt:'Qualité de l\'air',lyt:'Couches carte',
+  l1:'Vent',l2:'Pluie & Orage',l3:'Temp.',l4:'Nuages',l5:'Poussière',l6:'Rosée',l7:'Pollen',l8:'Pression',l9:'Vagues',
+  lRD:'Radar',lST:'Satellite',lGS:'Rafales',lAC:'Précip. cumulées',
+  cl:'Fermer',qw:'Vent',qr:'Pluie',qh:'Temp.',qs:'Nuages',
+  lh:'Humidité',lw:'Vent',lv:'Visibilité',lp:'Pression',wu:'km/h',vu:'km',
+  bw:'Vent',br:'Pluie',bt:'Temp.',bc:'Nuages',
+  kt:'Clé API OpenWeatherMap',kl:'Saisir la clé:',ks:'Enregistrer',kd:'Supprimer',
+  h1:'Clé gratuite sur',h2:'Sauvegardé dans le navigateur',kok:'✓ Clé active',kno:'Pas de clé — démo',
+  nf:'Ville introuvable',
+  uvt:'Indice UV',snt:'Lever & Coucher',srl:'Lever',ssl:'Coucher',
+  uvls:['Faible','Modéré','Élevé','Très élevé','Extrême'],
+  ag:'Bon',am:'Modéré',ap:'Mauvais',
+  days:['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'],
+  cond:{Clear:'Ciel dégagé',Clouds:'Nuageux',Rain:'Pluvieux',Snow:'Neigeux',Thunderstorm:'Orage',Drizzle:'Bruine',Mist:'Brumeux',Fog:'Brouillard'},
+  nt:'Mes notes',ns:'Enregistrer',nd:'Effacer'},
+
+de:{dir:'ltr',srch:'Stadt suchen...',load:'Atmosphäre wird geladen',feels:'Gefühlt',
+  demo:'Demo-Modus — 🔑 für API-Schlüssel',ok:'API-Schlüssel aktiv — Live-Daten',
+  glob:'Weltansicht',now:'JETZT',mt:'Wetterkarte',ht:'STÜNDLICHER TREND',wt:'7-Tage-Prognose',
+  aqt:'Luftqualität',lyt:'Kartenebenen',
+  l1:'Wind',l2:'Regen & Gewitter',l3:'Temp.',l4:'Wolken',l5:'Staub',l6:'Tau',l7:'Pollen',l8:'Druck',l9:'Wellen',
+  lRD:'Radar',lST:'Satellit',lGS:'Böen',lAC:'Niederschlag kum.',
+  cl:'Schließen',qw:'Wind',qr:'Regen',qh:'Temp.',qs:'Wolken',
+  lh:'Luftfeucht.',lw:'Wind',lv:'Sichtweite',lp:'Druck',wu:'km/h',vu:'km',
+  bw:'Wind',br:'Regen',bt:'Temp.',bc:'Wolken',
+  kt:'OpenWeatherMap API-Schlüssel',kl:'API-Schlüssel eingeben:',ks:'Speichern',kd:'Löschen',
+  h1:'Kostenloser Schlüssel auf',h2:'Im Browser gespeichert',kok:'✓ Schlüssel aktiv',kno:'Kein Schlüssel',
+  nf:'Stadt nicht gefunden',
+  uvt:'UV-Index',snt:'Sonnenauf- und untergang',srl:'Aufgang',ssl:'Untergang',
+  uvls:['Niedrig','Mäßig','Hoch','Sehr hoch','Extrem'],
+  ag:'Gut',am:'Mäßig',ap:'Ungesund',
+  days:['So','Mo','Di','Mi','Do','Fr','Sa'],
+  cond:{Clear:'Klarer Himmel',Clouds:'Bewölkt',Rain:'Regnerisch',Snow:'Schneereich',Thunderstorm:'Gewitter',Drizzle:'Nieselregen',Mist:'Dunstig',Fog:'Neblig'},
+  nt:'Meine Notizen',ns:'Speichern',nd:'Löschen'},
+
+es:{dir:'ltr',srch:'Buscar ciudad...',load:'Analizando la atmósfera',feels:'Sensación',
+  demo:'Modo demo — 🔑 para API',ok:'Clave API activa — datos reales',
+  glob:'Vista global',now:'AHORA',mt:'Mapa del tiempo',ht:'TENDENCIA HORARIA',wt:'Pronóstico 7 días',
+  aqt:'Calidad del aire',lyt:'Capas del mapa',
+  l1:'Viento',l2:'Lluvia y tormenta',l3:'Temp.',l4:'Nubes',l5:'Polvo',l6:'Rocío',l7:'Polen',l8:'Presión',l9:'Olas',
+  lRD:'Radar',lST:'Satélite',lGS:'Ráfagas',lAC:'Precip. acum.',
+  cl:'Cerrar',qw:'Viento',qr:'Lluvia',qh:'Temp.',qs:'Nubes',
+  lh:'Humedad',lw:'Viento',lv:'Visibilidad',lp:'Presión',wu:'km/h',vu:'km',
+  bw:'Viento',br:'Lluvia',bt:'Temp.',bc:'Nubes',
+  kt:'Clave API OpenWeatherMap',kl:'Ingresar clave API:',ks:'Guardar',kd:'Eliminar',
+  h1:'Clave gratuita en',h2:'Guardado en el navegador',kok:'✓ Clave activa',kno:'Sin clave — demo',
+  nf:'Ciudad no encontrada',
+  uvt:'Índice UV',snt:'Amanecer y atardecer',srl:'Amanecer',ssl:'Atardecer',
+  uvls:['Bajo','Moderado','Alto','Muy alto','Extremo'],
+  ag:'Bueno',am:'Moderado',ap:'No saludable',
+  days:['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'],
+  cond:{Clear:'Cielo despejado',Clouds:'Nublado',Rain:'Lluvioso',Snow:'Nevado',Thunderstorm:'Tormenta',Drizzle:'Llovizna',Mist:'Brumoso',Fog:'Niebla'},
+  nt:'Mis notas',ns:'Guardar',nd:'Borrar'},
+
+it:{dir:'ltr',srch:'Cerca città...',load:'Analisi atmosfera',feels:'Percepito',
+  demo:'Modalità demo — 🔑 per API',ok:'Chiave API attiva — dati live',
+  glob:'Vista globale',now:'ORA',mt:'Mappa meteo',ht:'TREND ORARIO',wt:'Previsioni 7 giorni',
+  aqt:'Qualità dell\'aria',lyt:'Livelli mappa',
+  l1:'Vento',l2:'Pioggia e tuoni',l3:'Temp.',l4:'Nuvole',l5:'Polvere',l6:'Rugiada',l7:'Polline',l8:'Pressione',l9:'Onde',
+  lRD:'Radar',lST:'Satellite',lGS:'Raffiche',lAC:'Precip. cumulate',
+  cl:'Chiudi',qw:'Vento',qr:'Pioggia',qh:'Temp.',qs:'Nuvole',
+  lh:'Umidità',lw:'Vento',lv:'Visibilità',lp:'Pressione',wu:'km/h',vu:'km',
+  bw:'Vento',br:'Pioggia',bt:'Temp.',bc:'Nuvole',
+  kt:'Chiave API OpenWeatherMap',kl:'Inserisci chiave:',ks:'Salva',kd:'Elimina',
+  h1:'Chiave gratuita su',h2:'Salvato nel browser',kok:'✓ Chiave attiva',kno:'Nessuna chiave',
+  nf:'Città non trovata',
+  uvt:'Indice UV',snt:'Alba e tramonto',srl:'Alba',ssl:'Tramonto',
+  uvls:['Basso','Moderato','Alto','Molto alto','Estremo'],
+  ag:'Buono',am:'Moderato',ap:'Insalubre',
+  days:['Dom','Lun','Mar','Mer','Gio','Ven','Sab'],
+  cond:{Clear:'Cielo sereno',Clouds:'Nuvoloso',Rain:'Piovoso',Snow:'Nevoso',Thunderstorm:'Temporale',Drizzle:'Pioggerella',Mist:'Nebbioso',Fog:'Nebbia'},
+  nt:'Le mie note',ns:'Salva',nd:'Cancella'},
+
+ru:{dir:'ltr',srch:'Поиск города...',load:'Анализ атмосферы',feels:'Ощущается',
+  demo:'Демо режим — 🔑 для API',ok:'API ключ активен — реальные данные',
+  glob:'Глобальный вид',now:'СЕЙЧАС',mt:'Карта погоды',ht:'ПОЧАСОВОЙ ТРЕНД',wt:'Прогноз 7 дней',
+  aqt:'Качество воздуха',lyt:'Слои карты',
+  l1:'Ветер',l2:'Дождь и гроза',l3:'Темп.',l4:'Облака',l5:'Пыль',l6:'Роса',l7:'Пыльца',l8:'Давление',l9:'Волны',
+  lRD:'Радар',lST:'Спутник',lGS:'Порывы',lAC:'Осадки накоп.',
+  cl:'Закрыть',qw:'Ветер',qr:'Дождь',qh:'Темп.',qs:'Облака',
+  lh:'Влажность',lw:'Ветер',lv:'Видимость',lp:'Давление',wu:'км/ч',vu:'км',
+  bw:'Ветер',br:'Дождь',bt:'Темп.',bc:'Облака',
+  kt:'Ключ API OpenWeatherMap',kl:'Введите ключ API:',ks:'Сохранить',kd:'Удалить',
+  h1:'Бесплатный ключ на',h2:'Сохранено в браузере',kok:'✓ Ключ активен',kno:'Нет ключа',
+  nf:'Город не найден',
+  uvt:'УФ-индекс',snt:'Восход и закат',srl:'Восход',ssl:'Закат',
+  uvls:['Низкий','Умеренный','Высокий','Очень высокий','Экстремальный'],
+  ag:'Хорошо',am:'Умеренно',ap:'Вредно',
+  days:['Вс','Пн','Вт','Ср','Чт','Пт','Сб'],
+  cond:{Clear:'Ясно',Clouds:'Облачно',Rain:'Дождь',Snow:'Снег',Thunderstorm:'Гроза',Drizzle:'Морось',Mist:'Туманно',Fog:'Туман'},
+  nt:'Мои заметки',ns:'Сохранить',nd:'Удалить'},
+
+tr:{dir:'ltr',srch:'Şehir ara...',load:'Atmosfer analizi',feels:'Hissedilen',
+  demo:'Demo modu — 🔑 API anahtarı ekle',ok:'API anahtarı aktif — canlı veri',
+  glob:'Küresel görünüm',now:'ŞİMDİ',mt:'Hava haritası',ht:'SAATLİK TREND',wt:'7 günlük tahmin',
+  aqt:'Hava kalitesi',lyt:'Harita katmanları',
+  l1:'Rüzgar',l2:'Yağmur ve fırtına',l3:'Sıcaklık',l4:'Bulutlar',l5:'Toz',l6:'Çiy',l7:'Polen',l8:'Basınç',l9:'Dalgalar',
+  lRD:'Radar',lST:'Uydu',lGS:'Rüzgar savurmaları',lAC:'Yağış birikimi',
+  cl:'Kapat',qw:'Rüzgar',qr:'Yağmur',qh:'Sıcaklık',qs:'Bulutlar',
+  lh:'Nem',lw:'Rüzgar',lv:'Görüş',lp:'Basınç',wu:'km/s',vu:'km',
+  bw:'Rüzgar',br:'Yağmur',bt:'Sıcaklık',bc:'Bulutlar',
+  kt:'OpenWeatherMap API Anahtarı',kl:'API anahtarı girin:',ks:'Kaydet',kd:'Sil',
+  h1:'Ücretsiz anahtar',h2:'Tarayıcıda kaydedildi',kok:'✓ Anahtar aktif',kno:'Anahtar yok',
+  nf:'Şehir bulunamadı',
+  uvt:'UV İndeksi',snt:'Gün doğumu ve batımı',srl:'Doğum',ssl:'Batım',
+  uvls:['Düşük','Orta','Yüksek','Çok yüksek','Aşırı'],
+  ag:'İyi',am:'Orta',ap:'Sağlıksız',
+  days:['Paz','Pzt','Sal','Çar','Per','Cum','Cmt'],
+  cond:{Clear:'Açık hava',Clouds:'Bulutlu',Rain:'Yağmurlu',Snow:'Karlı',Thunderstorm:'Fırtına',Drizzle:'Çisenti',Mist:'Sisli',Fog:'Yoğun sis'},
+  nt:'Notlarım',ns:'Kaydet',nd:'Temizle'},
+
+fa:{dir:'rtl',srch:'جستجوی شهر...',load:'در حال تحلیل جو',feels:'احساس می‌شود',
+  demo:'حالت نمایشی — 🔑 برای کلید API',ok:'کلید API فعال — داده زنده',
+  glob:'نمای جهانی',now:'اکنون',mt:'نقشه آب و هوا',ht:'روند ساعتی',wt:'پیش‌بینی ۷ روز',
+  aqt:'کیفیت هوا',lyt:'لایه‌های نقشه',
+  l1:'باد',l2:'باران و رعد',l3:'دما',l4:'ابرها',l5:'گرد',l6:'شبنم',l7:'گرده گل',l8:'فشار',l9:'امواج',
+  lRD:'رادار',lST:'ماهواره',lGS:'وزش باد',lAC:'انباشت بارش',
+  cl:'بستن',qw:'باد',qr:'باران',qh:'دما',qs:'ابرها',
+  lh:'رطوبت',lw:'باد',lv:'دید',lp:'فشار',wu:'کم/س',vu:'کم',
+  bw:'باد',br:'باران',bt:'دما',bc:'ابرها',
+  kt:'کلید API OpenWeatherMap',kl:'کلید API را وارد کنید:',ks:'ذخیره',kd:'حذف',
+  h1:'کلید رایگان از',h2:'در مرورگر ذخیره شد',kok:'✓ کلید فعال',kno:'بدون کلید',
+  nf:'شهر پیدا نشد',
+  uvt:'شاخص UV',snt:'طلوع و غروب',srl:'طلوع',ssl:'غروب',
+  uvls:['پایین','متوسط','بالا','خیلی بالا','شدید'],
+  ag:'خوب',am:'متوسط',ap:'ناسالم',
+  days:['یک','دو','سه','چهار','پنج','جمعه','شنبه'],
+  cond:{Clear:'آسمان صاف',Clouds:'ابری',Rain:'بارانی',Snow:'برفی',Thunderstorm:'رعد و برق',Drizzle:'نم نم باران',Mist:'مه آلود',Fog:'مه غلیظ'},
+  nt:'یادداشت‌های من',ns:'ذخیره',nd:'پاک کردن'},
+
+zh:{dir:'ltr',srch:'搜索城市...',load:'正在获取大气数据',feels:'体感',
+  demo:'演示模式 — 点击 🔑 添加API密钥',ok:'API密钥已激活 — 实时数据',
+  glob:'全球视图',now:'现在',mt:'天气图',ht:'逐小时趋势',wt:'7天预报',
+  aqt:'空气质量',lyt:'地图图层',
+  l1:'风',l2:'雨和雷暴',l3:'气温',l4:'云',l5:'尘埃',l6:'露点',l7:'花粉',l8:'气压',l9:'海浪',
+  lRD:'雷达',lST:'卫星',lGS:'阵风',lAC:'累积降水',
+  cl:'关闭',qw:'风',qr:'雨',qh:'气温',qs:'云',
+  lh:'湿度',lw:'风',lv:'能见度',lp:'气压',wu:'千米/时',vu:'千米',
+  bw:'风',br:'雨',bt:'气温',bc:'云',
+  kt:'OpenWeatherMap API密钥',kl:'输入API密钥:',ks:'保存',kd:'删除',
+  h1:'免费密钥获取',h2:'保存在浏览器中',kok:'✓ 密钥已激活',kno:'无密钥 — 演示',
+  nf:'未找到城市',
+  uvt:'紫外线指数',snt:'日出与日落',srl:'日出',ssl:'日落',
+  uvls:['低','中等','高','很高','极端'],
+  ag:'良好',am:'中等',ap:'不健康',
+  days:['日','一','二','三','四','五','六'],
+  cond:{Clear:'晴朗',Clouds:'多云',Rain:'雨天',Snow:'雪天',Thunderstorm:'雷暴',Drizzle:'毛毛雨',Mist:'薄雾',Fog:'浓雾'},
+  nt:'我的笔记',ns:'保存',nd:'清除'}};
+
+// ══════════════════════════════════════════
+// RAIN — CANVAS (نفس الكود السابق)
+// ══════════════════════════════════════════
+(function(){
+  const cv=document.getElementById('RAIN');
+  const ctx=cv.getContext('2d');
+  let drops=[];
+  function resize(){
+    cv.width=window.innerWidth;cv.height=window.innerHeight;
+    drops=[];
+    for(let i=0;i<160;i++) drops.push({
+      x:Math.random()*cv.width,
+      y:Math.random()*cv.height,
+      len:Math.random()*60+20,
+      spd:Math.random()*2.5+1.2,
+      op:Math.random()*.45+.08,
+      w:Math.random()*.6+.3
+    });
+  }
+  resize();
+  window.addEventListener('resize',resize);
+  function frame(){
+    ctx.clearRect(0,0,cv.width,cv.height);
+    drops.forEach(d=>{
+      const g=ctx.createLinearGradient(d.x,d.y,d.x+d.len*.12,d.y+d.len);
+      g.addColorStop(0,'rgba(0,0,0,0)');
+      g.addColorStop(.5,`rgba(0,220,255,${d.op*.5})`);
+      g.addColorStop(1,`rgba(0,220,255,${d.op})`);
+      ctx.strokeStyle=g;
+      ctx.lineWidth=d.w;
+      ctx.lineCap='round';
+      ctx.beginPath();
+      ctx.moveTo(d.x,d.y);
+      ctx.lineTo(d.x+d.len*.12,d.y+d.len);
+      ctx.stroke();
+      d.y+=d.spd*2.5;d.x+=d.spd*.25;
+      if(d.y>cv.height+80){d.y=-100;d.x=Math.random()*cv.width;}
+    });
+    requestAnimationFrame(frame);
+  }
+  frame();
+})();
+
+// ══════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════
+const $=id=>document.getElementById(id);
+const set=(id,v)=>{const e=$(id);if(e)e.textContent=v};
+const ph=(id,v)=>{const e=$(id);if(e)e.placeholder=v};
+const ts=()=>new Date().toTimeString().slice(0,8);
+
+// ══════════════════════════════════════════
+// CONSOLE
+// ══════════════════════════════════════════
+function clog(msg,type='info'){
+  logs.push({t:ts(),msg,type});
+  const el=$('CONLOG');if(!el)return;
+  const d=document.createElement('div');d.className=`clog ${type}`;
+  d.innerHTML=`<span class="ct">[${ts()}]</span><span class="cm">${msg}</span>`;
+  el.appendChild(d);el.scrollTop=el.scrollHeight;
+}
+function clrCon(){$('CONLOG').innerHTML='';clog('cleared','sys')}
+function expCon(){
+  const t=logs.map(l=>`[${l.t}][${l.type.toUpperCase()}] ${l.msg}`).join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/plain;charset=utf-8,'+encodeURIComponent(t);
+  a.download='aero-x.log';a.click();clog('exported','ok');
+}
+function togCon(){
+  conV=!conV;$('CONCARD').style.display=conV?'block':'none';
+  $('IBCON').style.borderColor=conV?'var(--c)':'';
+  $('IBCON').style.color=conV?'var(--c)':'';
+  if(conV)$('CONINP').focus();
+}
+const CMDS={
+  help:()=>clog('cmds: help|clear|version|lang|weather|gps|key|demo','sys'),
+  clear:clrCon,
+  version:()=>clog('AERO-X Cyber Ed. v4 — NIDAL WATFA 2026','sys'),
+  lang:()=>clog(`lang: ${lang}`,'info'),
+  weather:()=>WD?clog(`${WD.city} ${WD.temp}°C ${WD.condition}`,'ok'):clog('no data','warn'),
+  gps:getGPS,
+  key:()=>clog(KEY?`key: ${KEY.slice(0,8)}••••`:'no key set','warn'),
+  demo:()=>{KEY='';updKey();loadW('Damascus');clog('demo mode','warn');}
+};
+function onCC(e){
+  if(e.key!=='Enter')return;
+  const i=$('CONINP'),c=i.value.trim().toLowerCase();i.value='';
+  if(!c)return;clog(`$ ${c}`,'sys');
+  CMDS[c]?CMDS[c]():clog(`unknown: '${c}'`,'err');
+}
+
+// ══════════════════════════════════════════
+// LANGUAGE
+// ══════════════════════════════════════════
+function setLang(l){
+  // fallback إلى الإنجليزية إذا اللغة غير موجودة
+  if(!TR[l]) l='en';
+  lang=l;const L=TR[l];
+  document.documentElement.dir=L.dir;document.documentElement.lang=l;
+  $('LANG').value=l;
+  ph('SINP',L.srch);set('LTXT',L.load);set('TT_GB',L.glob);
+  set('TT_MT',L.mt);set('TT_HR',L.ht);set('TT_WK',L.wt);set('TT_AQ',L.aqt);
+  set('TT_LY',L.lyt);
+  // طبقات النافذة المنبثقة
+  set('TT_L1',L.l1);set('TT_L2',L.l2);set('TT_L3',L.l3);
+  set('TT_L4',L.l4);set('TT_L5',L.l5);set('TT_L6',L.l6);
+  set('TT_L7',L.l7||'');set('TT_L8',L.l8);set('TT_L9',L.l9);
+  set('TT_L_RD',L.lRD);set('TT_L_ST',L.lST);set('TT_L_GS',L.lGS);set('TT_L_AC',L.lAC);
+  set('TT_LC',L.cl);set('TT_KC',L.cl);set('TT_NC',L.cl);
+  set('TT_QW',L.qw);set('TT_QR',L.qr);set('TT_QH',L.qh);set('TT_QS',L.qs);
+  set('LH',L.lh);set('LW',L.lw);set('LV',L.lv);set('LP',L.lp);
+  set('WU',L.wu);set('VU',L.vu);
+  // طبقات شريط الخريطة
+  set('MLB_W_T',L.bw||L.l1);set('MLB_R_T',L.br||L.l2);set('MLB_T_T',L.bt||L.l3);set('MLB_C_T',L.bc||L.l4);
+  set('MLB_RD_T',L.lRD);set('MLB_ST_T',L.lST);set('MLB_GS_T',L.lGS);
+  set('MLB_AC_T',L.lAC);set('MLB_WV_T',L.l9);set('MLB_PR_T',L.l8);
+  set('TT_KT',L.kt);set('TT_KL',L.kl);set('TT_KA',L.ks);set('TT_KD',L.kd);
+  set('TT_H1',L.h1);set('TT_H2',L.h2);
+  set('TT_BD',L.demo);set('TT_BK',L.ok);
+  set('TT_KS',KEY?L.kok:L.kno);
+  set('TT_UV',L.uvt);set('TT_SN',L.snt);set('TT_SR',L.srl);set('TT_SS',L.ssl);
+  // ملاحظات
+  set('TT_NT',L.nt);set('TT_NS',L.ns);set('TT_ND',L.nd);
+  if(WD)render(WD);
+  clog(`lang→${l}`,'info');
+}
+
+// ══════════════════════════════════════════
+// MAP (مع دعم طبقات Windy)
+// ══════════════════════════════════════════
+// ملاحظة: Windy يدعم طبقات محددة. سنستخدم أقرب تطابق.
+let altLevel = 'surface'; // مستوى الارتفاع الحالي
+
+const ALT_LEVELS = [
+  {val:'surface',   ar:'سطح الأرض', en:'Surface'},
+  {val:'1000h',     ar:'1000 hPa',   en:'1000 hPa'},
+  {val:'950h',      ar:'950 hPa',    en:'950 hPa'},
+  {val:'850h',      ar:'850 hPa',    en:'850 hPa'},
+  {val:'700h',      ar:'700 hPa',    en:'700 hPa'},
+  {val:'500h',      ar:'500 hPa',    en:'500 hPa'}
+];
+
+function setAlt(idx){
+  altLevel = ALT_LEVELS[idx].val;
+  const label = ALT_LEVELS[idx].ar;
+  set('ALT_VAL', label);
+  // تحديث شريط التدرج اللوني للمؤشر
+  const pct = (idx / 5) * 100;
+  document.getElementById('ALT_SL').style.background =
+    `linear-gradient(90deg,var(--c) ${pct}%,rgba(0,229,255,.15) ${pct}%)`;
+  loadMap();
+  clog(`alt→${altLevel}`,'info');
+}
+
+function wURL(a,o,l){
+  // كل طبقة: {overlay, product}
+  const layerCfg = {
+    wind:         {overlay:'wind',        product:'ecmwf'},
+    rain:         {overlay:'rain',        product:'ecmwf'},
+    temp:         {overlay:'temp',        product:'ecmwf'},
+    clouds:       {overlay:'clouds',      product:'ecmwf'},
+    waves:        {overlay:'waves',       product:'ecmwf'},
+    pressure:     {overlay:'pressure',    product:'ecmwf'},
+    gust:         {overlay:'gust',        product:'ecmwf'},
+    accumulation: {overlay:'rainAccu',    product:'ecmwf'},
+    dew:          {overlay:'dewpoint',    product:'ecmwf'},
+    dust:         {overlay:'pm2p5',       product:'cams'},
+    pollen:       {overlay:'gpollen',     product:'cams'},
+    so2:          {overlay:'so2',         product:'cams'},
+    ozone:        {overlay:'ozone',       product:'cams'},
+    cosc:         {overlay:'cosc',        product:'cams'},
+    dustStorm:    {overlay:'dust',        product:'cams'},
+    fireDanger:   {overlay:'fireDanger',  product:'cams'},
+    drought:      {overlay:'sst',         product:'ecmwf'},
+    radar:        {overlay:'radar',       product:'radar'},
+    satellite:    {overlay:'satellite',   product:'satellite'},
+    capAlerts:    {overlay:'capAlerts',   product:'ecmwf'},
+    alerts:       {overlay:'capAlerts',   product:'ecmwf'}
+  };
+  const cfg = layerCfg[l] || layerCfg['wind'];
+  const overlay = cfg.overlay;
+  const product = cfg.product;
+  const level = altLevel || 'surface';
+  return `https://embed.windy.com/embed2.html?lat=${a}&lon=${o}&detailLat=${a}&detailLon=${o}&width=860&height=345&zoom=8&level=${level}&overlay=${overlay}&product=${product}&menu=&message=true&marker=true&calendar=now&pressure=true&type=map&location=coordinates&detail=&metricWind=km%2Fh&metricTemp=%C2%B0C&radarRange=-1`;
+}
+function loadMap(){
+  const url=wURL(lat,lon,lyr);
+  document.querySelectorAll('#WINDY').forEach(fr=>fr.src=url);
+  clog(`map:${lat.toFixed(2)},${lon.toFixed(2)},${lyr}`,'ok');
+}
+function setLy(l,btn,fromModal){
+  lyr=l;
+  document.querySelectorAll('.mlb').forEach(b=>b.classList.remove('on'));
+  if(btn){btn.classList.add('on');}
+  else{
+    // map layer key → button id
+    const m={wind:'MLB_W',rain:'MLB_R',temp:'MLB_T',clouds:'MLB_C',
+             radar:'MLB_RD',satellite:'MLB_ST',gust:'MLB_GS',
+             accumulation:'MLB_AC',waves:'MLB_WV',pressure:'MLB_PR'};
+    const e=$(m[l]);if(e)e.classList.add('on');
+  }
+  loadMap();
+  if(fromModal) scrMap();
+}
+function scrMap(){$('MAPSEC').scrollIntoView({behavior:'smooth',block:'start'})}
+function togFS(){
+  if(!document.fullscreenElement)($('MAPSEC').requestFullscreen ? $('MAPSEC').requestFullscreen() : null);
+  else (document.exitFullscreen ? document.exitFullscreen() : null);
+}
+
+// ══════════════════════════════════════════
+// AUTOCOMPLETE
+// ══════════════════════════════════════════
+async function onAC(q){
+  clearTimeout(acT);const dr=$('ACDR');
+  if(q.length<2){dr.classList.remove('open');return;}
+  if(!KEY){dr.classList.remove('open');return;}
+  acT=setTimeout(async()=>{
+    try{
+      const r=await fetch(`https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(q)}&limit=5&appid=${KEY}`);
+      acList=await r.json();
+      if(!acList.length){dr.classList.remove('open');return;}
+      dr.innerHTML=acList.map((it,i)=>`<div class="acit" onclick="pickAC(${i})"><i class="fas fa-location-dot"></i><span>${(it.local_names && it.local_names[lang] ? it.local_names[lang] : it.name)}${it.state?', '+it.state:''}, ${it.country}</span></div>`).join('');
+      dr.classList.add('open');
+    }catch(e){clog('AC:'+e.message,'err');}
+  },350);
+}
+function pickAC(i){
+  const it=acList[i];lat=it.lat;lon=it.lon;
+  $('SINP').value=(it.local_names && it.local_names[lang] ? it.local_names[lang] : it.name);
+  $('ACDR').classList.remove('open');
+  loadByC(lat,lon,(it.local_names && it.local_names[lang] ? it.local_names[lang] : it.name));
+}
+function onSK(e){if(e.key==='Enter'){$('ACDR').classList.remove('open');doSrch();}if(e.key==='Escape')$('ACDR').classList.remove('open');}
+document.addEventListener('click',e=>{if(!$('SROW').contains(e.target))$('ACDR').classList.remove('open');});
+function doSrch(){const q=$('SINP').value.trim();if(q){loadW(q);$('ACDR').classList.remove('open');}}
+
+// ══════════════════════════════════════════
+// GPS — دقة عالية
+// ══════════════════════════════════════════
+function getGPS(){
+  if(!navigator.geolocation){clog('GPS not supported','err');alert('المتصفح لا يدعم GPS');return;}
+  clog('requesting GPS (high accuracy)...','info');
+  const btn=$('IBGPS');
+  btn.style.color='var(--c)';
+  btn.style.animation='blink 1s ease-in-out infinite';
+  // نطلب الإذن صراحةً أولاً إن أمكن
+  if(navigator.permissions){
+    navigator.permissions.query({name:'geolocation'}).then(result=>{
+      clog('GPS permission: '+result.state,'info');
+    }).catch(()=>{});
+  }
+  navigator.geolocation.getCurrentPosition(
+    p=>{
+      lat=p.coords.latitude;
+      lon=p.coords.longitude;
+      clog(`GPS OK: ${lat.toFixed(4)}, ${lon.toFixed(4)} (±${Math.round(p.coords.accuracy)}m)`,'ok');
+      btn.style.color='var(--g)';
+      btn.style.animation='';
+      loadByC(lat,lon);
+    },
+    e=>{
+      let msg='خطأ GPS';
+      if(e.code===1) msg='تم رفض إذن الموقع — يرجى السماح من إعدادات المتصفح';
+      else if(e.code===2) msg='الموقع غير متاح — تحقق من إعدادات الجهاز';
+      else if(e.code===3) msg='انتهت مهلة GPS — حاول مجدداً';
+      clog('GPS: '+msg,'err');
+      btn.style.color='var(--r)';
+      btn.style.animation='';
+      setTimeout(()=>{btn.style.color='';},2000);
+      alert(msg);
+    },
+    {enableHighAccuracy:true, timeout:15000, maximumAge:0}
+  );
+}
+
+// ══════════════════════════════════════════
+// FAVORITES
+// ══════════════════════════════════════════
+function rndrFavs(){
+  const r=$('FAVROW');if(!favs.length){r.style.display='none';return;}
+  r.style.display='flex';
+  r.innerHTML=favs.map((f,i)=>`<div class="fchip" onclick="ldFav(${i})"><i class="fas fa-star"></i>${f.city}<span class="frm" onclick="rmFav(event,${i})">✕</span></div>`).join('');
+}
+function togFav(){
+  if(!WD)return;
+  const idx=favs.findIndex(f=>f.city===WD.city);
+  if(idx>=0){favs.splice(idx,1);clog(`rm fav:${WD.city}`,'warn');}
+  else{favs.push({city:WD.city,lat,lon});clog(`add fav:${WD.city}`,'ok');}
+  localStorage.setItem('ax_favs',JSON.stringify(favs));
+  updFavBtn();rndrFavs();
+}
+function rmFav(e,i){e.stopPropagation();favs.splice(i,1);localStorage.setItem('ax_favs',JSON.stringify(favs));rndrFavs();}
+function ldFav(i){const f=favs[i];lat=f.lat;lon=f.lon;loadW(f.city);}
+function updFavBtn(){if(!WD)return;$('FAVBTN').classList.toggle('on',favs.some(f=>f.city===WD.city));}
+
+// ══════════════════════════════════════════
+// API KEY
+// ══════════════════════════════════════════
+function updKey(){
+  const has=!!KEY;
+  const dot=$('KDOT');dot.className='kd'+(has?' on':'');
+  $('BDG_D').style.display=has?'none':'flex';
+  $('BDG_K').style.display=has?'flex':'none';
+  $('KST').className='ast '+(has?'ok':'no');
+  set('TT_KS',KEY?TR[lang].kok:TR[lang].kno);
+}
+function saveKey(){
+  const v=$('KINP').value.trim();if(!v)return;
+  KEY=v;localStorage.setItem('ax_key',v);
+  updKey();cOv('OV_K');clog('key saved','ok');
+  loadW((WD && WD.city ? WD.city : 'Damascus'));
+}
+function delKey(){
+  KEY='';localStorage.removeItem('ax_key');$('KINP').value='';
+  updKey();cOv('OV_K');clog('key removed','warn');loadW('Damascus');
+}
+
+// ══════════════════════════════════════════
+// OVERLAYS
+// ══════════════════════════════════════════
+function oOv(id){
+  if(id==='OV_K'){$('KINP').value=KEY||'';updKey();}
+  $(id).classList.add('show');
+}
+function cOv(id){$(id).classList.remove('show')}
+document.querySelectorAll('.ovlay').forEach(o=>o.addEventListener('click',function(e){if(e.target===this)this.classList.remove('show');}));
+
+// ══════════════════════════════════════════
+// UV LABEL
+// ══════════════════════════════════════════
+function uvLab(v){const a=TR[lang].uvls;if(v<=2)return a[0];if(v<=5)return a[1];if(v<=7)return a[2];if(v<=10)return a[3];return a[4];}
+
+// ══════════════════════════════════════════
+// RENDER (مع المؤشرات الجديدة)
+// ══════════════════════════════════════════
+function render(d){
+  WD=d;const L=TR[lang];const tod=new Date().getDay();
+  set('CITY',d.city.toUpperCase());
+  $('TEMP').innerHTML=`${d.temp}<sup>°</sup>`;
+  set('TLO',d.low+'°');set('THI',d.high+'°');
+  set('FEELS',`${L.feels} ${d.feels}°`);
+  set('CICO',ICO[d.condition]||'🌤️');
+  set('CTAG',(L.cond[d.condition]||d.condition).toUpperCase());
+  set('SH',d.humidity);set('SW',d.wind);set('SV',d.visibility);set('SP',d.pressure);
+  const uv=d.uv||4;set('UVV',uv);set('UVL',uvLab(uv));
+  $('UVBAR').style.width=Math.min(uv/11*100,100)+'%';
+  set('SRISE',d.sunrise||'06:21');set('SSET',d.sunset||'17:48');
+  // المؤشرات الجديدة
+  set('DUST',d.dust||15);
+  set('POLLEN',d.pollen||45);
+  set('DEW',`الندى: ${d.dew||2}°C`);
+  set('AQIV',d.aqi||25);
+  set('PM25',d.pm25||12);
+  set('PM10',d.pm10||25);
+  set('O3V',d.o3||38);
+  let aqiClass='ag', aqiLabel=L.ag;
+  const aqi=d.aqi||25;
+  if(aqi>150){aqiClass='ap';aqiLabel=L.ap;}
+  else if(aqi>50){aqiClass='am';aqiLabel=L.am;}
+  $('AQIB').className=`aqib ${aqiClass}`;
+  set('AQIB',aqiLabel);
+  $('AQIF').style.width=Math.min((aqi/200)*100,100)+'%';
+
+  $('HOURLY').innerHTML=d.hourly.map((h,i)=>`<div class="hc ${i===0?'now':''}"><div class="ht">${i===0?L.now:h.t}</div><div class="hi">${ICO[h.c]||'🌤️'}</div><div class="hv">${h.v}°</div></div>`).join('');
+  $('WEEKLY').innerHTML=d.forecast.map((f,i)=>`<div class="dc"><div class="dn">${L.days[(tod+i)%7]}</div><div class="di">${ICO[f.c]||'🌤️'}</div><div class="dh">${f.h}°</div><div class="dl">${f.l}°</div></div>`).join('');
+  updFavBtn();
+}
+
+// ══════════════════════════════════════════
+// FETCH (مع تحسين DEMO)
+// ══════════════════════════════════════════
+function showLoad(v){$('LOAD').classList.toggle('gone',!v)}
+
+async function loadW(city){
+  showLoad(true);clog(`fetch:${city}`,'info');
+  if(!KEY){
+    await new Promise(r=>setTimeout(r,750));
+    const hash = city.split('').reduce((a,c)=>a + c.charCodeAt(0), 0);
+    const newLat = 30 + (hash % 20);
+    const newLon = 10 + (hash % 30);
+    lat = newLat; lon = newLon;
+    const demoData = { ...DEMO_TEMPLATE, city: city };
+    render(demoData);
+    loadMap();
+    showLoad(false);
+    clog(`demo:${city} (simulated)`,'warn');
+    return;
+  }
+  try{
+    const gr=await fetch(`https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(city)}&limit=1&appid=${KEY}`);
+    const geo=await gr.json();if(geo.length){lat=geo[0].lat;lon=geo[0].lon;}
+    const[wr,fr,air]=await Promise.all([
+      fetch(`https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${KEY}&units=metric`),
+      fetch(`https://api.openweathermap.org/data/2.5/forecast?q=${encodeURIComponent(city)}&appid=${KEY}&units=metric&cnt=40`),
+      fetch(`https://api.openweathermap.org/data/2.5/air_pollution?lat=${lat}&lon=${lon}&appid=${KEY}`)
+    ]);
+    if(!wr.ok)throw new Error('not found');
+    const w=await wr.json(),f=await fr.json(), a=await air.json();
+    lat=w.coord.lat;lon=w.coord.lon;
+    // محاكاة بيانات إضافية (الغبار، الندى، غبار الطلع) – يمكن استبدالها ببيانات حقيقية إذا توفرت
+    const dust = (a.list&&a.list[0]&&a.list[0].components&&a.list[0].components.pm10 ? a.list[0].components.pm10 + 5 : 20);
+    const pollen = (a.list&&a.list[0]&&a.list[0].components&&a.list[0].components.pm2_5 ? a.list[0].components.pm2_5 + 10 : 30);
+    const dew = w.main.temp - ((100 - w.main.humidity)/5); // تقريب بسيط
+    const aqi = (a.list&&a.list[0]&&a.list[0].main&&a.list[0].main.aqi ? a.list[0].main.aqi * 20 : 25); // تحويل aqi من 1-5 إلى 0-100
+    await procD(w,f,{dust, pollen, dew, aqi, pm25: (a.list&&a.list[0]&&a.list[0].components ? a.list[0].components.pm2_5||12 : 12), pm10: (a.list&&a.list[0]&&a.list[0].components ? a.list[0].components.pm10||25 : 25), o3: (a.list&&a.list[0]&&a.list[0].components ? a.list[0].components.o3||38 : 38)});
+  }catch(e){clog('err:'+e.message,'err');alert(TR[lang].nf);render({...DEMO_TEMPLATE, city: city});loadMap();}
+  finally{showLoad(false);}
+}
+async function loadByC(a,o,nm){
+  showLoad(true);
+  if(!KEY){await new Promise(r=>setTimeout(r,700));render({...DEMO_TEMPLATE, city:nm||'Location'});loadMap();showLoad(false);return;}
+  try{
+    const[wr,fr,air]=await Promise.all([
+      fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${a}&lon=${o}&appid=${KEY}&units=metric`),
+      fetch(`https://api.openweathermap.org/data/2.5/forecast?lat=${a}&lon=${o}&appid=${KEY}&units=metric&cnt=40`),
+      fetch(`https://api.openweathermap.org/data/2.5/air_pollution?lat=${a}&lon=${o}&appid=${KEY}`)
+    ]);
+    if(!wr.ok)throw new Error('err');
+    const w=await wr.json(),f=await fr.json(), aq=await air.json();
+    const dust = (aq.list&&aq.list[0]&&aq.list[0].components&&aq.list[0].components.pm10 ? aq.list[0].components.pm10 + 5 : 20);
+    const pollen = (aq.list&&aq.list[0]&&aq.list[0].components&&aq.list[0].components.pm2_5 ? aq.list[0].components.pm2_5 + 10 : 30);
+    const dew = w.main.temp - ((100 - w.main.humidity)/5);
+    const aqi = (aq.list&&aq.list[0]&&aq.list[0].main&&aq.list[0].main.aqi ? aq.list[0].main.aqi * 20 : 25);
+    await procD(w,f,{dust, pollen, dew, aqi, pm25: (aq.list&&aq.list[0]&&aq.list[0].components ? aq.list[0].components.pm2_5||12 : 12), pm10: (aq.list&&aq.list[0]&&aq.list[0].components ? aq.list[0].components.pm10||25 : 25), o3: (aq.list&&aq.list[0]&&aq.list[0].components ? aq.list[0].components.o3||38 : 38)});
+  }catch(e){clog('coords:'+e.message,'err');render({...DEMO_TEMPLATE, city:nm||'Location'});loadMap();}
+  finally{showLoad(false);}
+}
+// ══════════════════════════════════════════
+// OPEN-METEO — 15-day forecast (free, no key)
+// ══════════════════════════════════════════
+const OM_WMO={0:'Clear',1:'Clear',2:'Clouds',3:'Clouds',
+  45:'Mist',48:'Mist',
+  51:'Drizzle',53:'Drizzle',55:'Drizzle',
+  61:'Rain',63:'Rain',65:'Rain',
+  71:'Snow',73:'Snow',75:'Snow',77:'Snow',
+  80:'Rain',81:'Rain',82:'Rain',
+  85:'Snow',86:'Snow',
+  95:'Thunderstorm',96:'Thunderstorm',99:'Thunderstorm'};
+
+async function fetch15Day(lt,lo){
+  try{
+    const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lt}&longitude=${lo}&daily=weathercode,temperature_2m_max,temperature_2m_min&forecast_days=15&timezone=auto`);
+    if(!r.ok)return null;
+    const d=await r.json();
+    return d.daily.time.map((t,i)=>({
+      h:Math.round(d.daily.temperature_2m_max[i]),
+      l:Math.round(d.daily.temperature_2m_min[i]),
+      c:OM_WMO[d.daily.weathercode[i]]||'Clouds'
+    }));
+  }catch(e){clog('open-meteo:'+e.message,'warn');return null;}
+}
+
+async function procD(w,f,extra){
+  // hourly من OpenWeatherMap (دقيق وحي)
+  const hourly=f.list.slice(0,7).map((it,i)=>({t:i===0?'now':new Date(it.dt*1000).getHours()+':00',v:Math.round(it.main.temp),c:it.weather[0].main}));
+  const sr=new Date(w.sys.sunrise*1000),ss=new Date(w.sys.sunset*1000);
+  const fmt=d=>`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+
+  // جلب 15 يوم من Open-Meteo بالتوازي
+  const forecast15 = await fetch15Day(w.coord.lat, w.coord.lon);
+
+  // إن فشل Open-Meteo نرجع لـ OWM (5 أيام)
+  let forecast;
+  if(forecast15 && forecast15.length>=5){
+    forecast = forecast15;
+    clog(`open-meteo:${forecast15.length} days`,'ok');
+  } else {
+    const days={};
+    f.list.forEach(it=>{const d=new Date(it.dt*1000).getDay();if(!days[d])days[d]={t:[],c:it.weather[0].main};days[d].t.push(it.main.temp);});
+    forecast=Object.entries(days).map(([,v])=>({h:Math.round(Math.max(...v.t)),l:Math.round(Math.min(...v.t)),c:v.c}));
+    clog('forecast: using OWM fallback','warn');
+  }
+
+  render({
+    city:w.name,
+    temp:Math.round(w.main.temp),
+    feels:Math.round(w.main.feels_like),
+    low:Math.round(w.main.temp_min),
+    high:Math.round(w.main.temp_max),
+    humidity:w.main.humidity,
+    wind:Math.round(w.wind.speed*3.6),
+    visibility:Math.round((w.visibility||10000)/1000),
+    pressure:w.main.pressure,
+    condition:w.weather[0].main,
+    uv:5,
+    sunrise:fmt(sr),
+    sunset:fmt(ss),
+    forecast,
+    hourly,
+    dust:extra.dust,
+    pollen:extra.pollen,
+    dew:Math.round(extra.dew),
+    aqi:extra.aqi,
+    pm25:extra.pm25,
+    pm10:extra.pm10,
+    o3:extra.o3
+  });
+  loadMap();clog(`ok:${w.name} ${Math.round(w.main.temp)}°C`,'ok');
+}
+
+// ══════════════════════════════════════════
+// SHARE DROPDOWN
+// ══════════════════════════════════════════
+function toggleShareDropdown() {
+  const dd = $('shareDropdown');
+  const btn = $('IBSHARE');
+  if(!dd || !btn) return;
+  const isOpen = dd.classList.contains('show');
+  // اغلاق كل القوائم أولاً
+  dd.classList.remove('show');
+  if(isOpen) return;
+  // حساب موضع الزر وفتح القائمة تحته
+  const rect = btn.getBoundingClientRect();
+  const isRTL = document.documentElement.dir === 'rtl';
+  dd.style.top = (rect.bottom + 6) + 'px';
+  if(isRTL){
+    dd.style.right = (window.innerWidth - rect.right) + 'px';
+    dd.style.left = 'auto';
+  } else {
+    dd.style.left = rect.left + 'px';
+    dd.style.right = 'auto';
+  }
+  dd.classList.add('show');
+  // إغلاق عند النقر خارجها
+  setTimeout(()=>{
+    const close = (e)=>{
+      if(!dd.contains(e.target) && e.target.id !== 'IBSHARE'){
+        dd.classList.remove('show');
+        document.removeEventListener('click', close);
+      }
+    };
+    document.addEventListener('click', close);
+  }, 0);
+}
+
+function shareAction(type) {
+  const url = encodeURIComponent(window.location.href);
+  const text = encodeURIComponent('AERO-X Weather — تطبيق طقس مستقبلي');
+  let targetUrl = '';
+  switch(type) {
+    case 'copy':
+      (navigator.clipboard ? navigator.clipboard.writeText(window.location.href) : null);
+      clog('رابط النسخ', 'ok');
+      break;
+    case 'twitter':
+      targetUrl = `https://twitter.com/intent/tweet?url=${url}&text=${text}`;
+      window.open(targetUrl, '_blank');
+      break;
+    case 'facebook':
+      targetUrl = `https://www.facebook.com/sharer/sharer.php?u=${url}`;
+      window.open(targetUrl, '_blank');
+      break;
+    case 'whatsapp':
+      targetUrl = `https://wa.me/?text=${text}%20${url}`;
+      window.open(targetUrl, '_blank');
+      break;
+    case 'email':
+      targetUrl = `mailto:?subject=AERO-X%20Weather&body=${text}%20${url}`;
+      window.location.href = targetUrl;
+      break;
+  }
+  $('#shareDropdown').classList.remove('show');
+}
+
+// ══════════════════════════════════════════
+// NOTES (ملاحظات المستخدم)
+// ══════════════════════════════════════════
+function updNoteCount(){
+  const v=$('NTINP').value;
+  set('NT_CNT',`${v.length} / 500 ${lang==='ar'?'حرف':'chars'}`);
+}
+function saveNote(){
+  const v=$('NTINP').value.trim();
+  if(!v)return;
+  localStorage.setItem('ax_note',v);
+  clog('note saved','ok');
+  // تأثير بصري
+  const btn=document.querySelector('[onclick="saveNote()"]');
+  if(btn){const orig=btn.textContent;btn.textContent='✓';setTimeout(()=>btn.textContent=orig,1200);}
+}
+function clearNote(){
+  $('NTINP').value='';
+  localStorage.removeItem('ax_note');
+  updNoteCount();
+  clog('note cleared','warn');
+}
+function sendNote(){
+  const v=$('NTINP').value.trim();
+  if(!v){alert(lang==='ar'?'الرجاء كتابة ملاحظة أولاً':'Please write a note first');return;}
+  const city = WD?WD.city:'';
+  const subject = encodeURIComponent(`AERO-X Note${city?' — '+city:''}`);
+  const body = encodeURIComponent(`${v}\n\n— AERO-X Weather\n${city?'📍 '+city+'\n':''}📅 ${new Date().toLocaleString()}`);
+  window.location.href = `mailto:nidalwatfa99@gmail.com?subject=${subject}&body=${body}`;
+  clog('note sent via email','ok');
+}
+function loadNote(){
+  const n=localStorage.getItem('ax_note');
+  if(n){$('NTINP').value=n;updNoteCount();}
+}
+
+// ══════════════════════════════════════════
+// PWA INSTALL (قابلة للتثبيت)
+// ══════════════════════════════════════════
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  $('#IBINSTALL').style.display = 'flex'; // إظهار زر التثبيت
+});
+
+function installApp() {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.then((choiceResult) => {
+    if (choiceResult.outcome === 'accepted') {
+      clog('تم تثبيت التطبيق', 'ok');
+    } else {
+      clog('تم إلغاء التثبيت', 'warn');
+    }
+    deferredPrompt = null;
+    $('#IBINSTALL').style.display = 'none';
+  });
+}
+
+// إنشاء manifest و service worker ديناميكياً
+function setupPWA() {
+  const manifest = {
+    name: 'AERO-X Weather',
+    short_name: 'AERO-X',
+    start_url: '.',
+    display: 'standalone',
+    background_color: '#050810',
+    theme_color: '#00e5ff',
+    icons: [
+      {
+        src: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="192" height="192"><circle cx="50" cy="50" r="45" fill="%2300e5ff"/><text x="50" y="70" font-size="50" text-anchor="middle" fill="%23050810" font-family="Orbitron">X</text></svg>',
+        sizes: '192x192',
+        type: 'image/svg+xml'
+      }
+    ]
+  };
+  const manifestBlob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
+  const manifestUrl = URL.createObjectURL(manifestBlob);
+  let link = document.querySelector('link[rel="manifest"]');
+  if (!link) {
+    link = document.createElement('link');
+    link.rel = 'manifest';
+    document.head.appendChild(link);
+  }
+  link.href = manifestUrl;
+  if ('serviceWorker' in navigator) {
+    const swCode = `
+      self.addEventListener('install', e => self.skipWaiting());
+      self.addEventListener('activate', e => self.clients.claim());
+      self.addEventListener('fetch', e => e.respondWith(fetch(e.request)));
+    `;
+    const swBlob = new Blob([swCode], {type: 'application/javascript'});
+    const swUrl = URL.createObjectURL(swBlob);
+    navigator.serviceWorker.register(swUrl).then(reg => clog('SW registered', 'ok')).catch(err => clog('SW failed', 'err'));
+  }
+}
+setupPWA();
+
+// ══════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════
+clog('AERO-X Cyber Edition v4','sys');
+clog('NIDAL WATFA © 2026','sys');
+clog(KEY?'key found':'no key → demo',KEY?'ok':'warn');
+updKey();rndrFavs();loadW('Damascus');loadNote();
+</script>
+</body>
+</html>
